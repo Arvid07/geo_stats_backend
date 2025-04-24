@@ -21,10 +21,16 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(DuelsGame::PlayerId1).string().not_null())
-                    .col(ColumnDef::new(DuelsGame::PlayerId2).string().not_null())
-                    .col(ColumnDef::new(DuelsGame::GameMode).string().not_null())
+                    .col(ColumnDef::new(DuelsGame::TeamId1).string().not_null())
+                    .col(ColumnDef::new(DuelsGame::TeamId2).string().not_null())
+                    .col(ColumnDef::new(DuelsGame::HealthTeam1).integer().not_null())
+                    .col(ColumnDef::new(DuelsGame::HealthTeam2).integer().not_null())
+                    .col(ColumnDef::new(DuelsGame::TeamGameMode).string().not_null())
+                    .col(ColumnDef::new(DuelsGame::GeoMode).string().not_null())
                     .col(ColumnDef::new(DuelsGame::StartTime).string().not_null())
+                    .col(ColumnDef::new(DuelsGame::MapId).string().not_null())
+                    .col(ColumnDef::new(DuelsGame::RatingBeforeTeam1).integer())
+                    .col(ColumnDef::new(DuelsGame::RatingBeforeTeam2).integer())
                     .to_owned(),
             )
             .await
@@ -41,8 +47,14 @@ impl MigrationTrait for Migration {
 pub enum DuelsGame {
     Table,
     Id,
-    PlayerId1,
-    PlayerId2,
-    GameMode,
-    StartTime
+    TeamId1,
+    TeamId2,
+    HealthTeam1,
+    HealthTeam2,
+    TeamGameMode,
+    GeoMode,
+    StartTime,
+    MapId,
+    RatingBeforeTeam1,
+    RatingBeforeTeam2
 }

@@ -4,7 +4,7 @@ pub struct Migration;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
-        "m20250420_000001_create_guess_table"
+        "m20250420_000004_create_guess_table"
     }
 }
 
@@ -21,10 +21,11 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(Guess::LocationId).string().not_null())
-                    .col(ColumnDef::new(Guess::Time).integer().not_null())
+                    .col(ColumnDef::new(Guess::Lat).double().not_null())
+                    .col(ColumnDef::new(Guess::Lng).double().not_null())
                     .col(ColumnDef::new(Guess::Score).integer().not_null())
-                    .col(ColumnDef::new(Guess::Distance).integer().not_null())
+                    .col(ColumnDef::new(Guess::Time).integer())
+                    .col(ColumnDef::new(Guess::Distance).double().not_null())
                     .to_owned(),
             )
             .await
@@ -41,8 +42,9 @@ impl MigrationTrait for Migration {
 pub enum Guess {
     Table,
     Id,
-    LocationId,
-    Time,
+    Lat,
+    Lng,
     Score,
+    Time,
     Distance
 }

@@ -4,7 +4,7 @@ pub struct Migration;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
-        "m20250420_000011_create_fun_team_table"
+        "m20250420_000013_create_map_table"
     }
 }
 
@@ -14,14 +14,18 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(FunTeam::Table)
+                    .table(Map::Table)
                     .col(
-                        ColumnDef::new(FunTeam::TeamId)
+                        ColumnDef::new(Map::Id)
                             .string()
                             .not_null()
                             .primary_key()
                     )
-                    .col(ColumnDef::new(FunTeam::PlayerIds).array(ColumnType::String(StringLen::None)).not_null())
+                    .col(ColumnDef::new(Map::Name).string().not_null())
+                    .col(ColumnDef::new(Map::Lat1).double().not_null())
+                    .col(ColumnDef::new(Map::Lng1).double().not_null())
+                    .col(ColumnDef::new(Map::Lat2).double().not_null())
+                    .col(ColumnDef::new(Map::Lng2).double().not_null())
                     .to_owned(),
             )
             .await
@@ -29,14 +33,18 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(FunTeam::Table).to_owned())
+            .drop_table(Table::drop().table(Map::Table).to_owned())
             .await
     }
 }
 
 #[derive(Iden)]
-pub enum FunTeam {
+pub enum Map {
     Table,
-    TeamId,
-    PlayerIds
+    Id,
+    Name,
+    Lat1,
+    Lng1,
+    Lat2,
+    Lng2
 }

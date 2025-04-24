@@ -4,7 +4,7 @@ use crate::entities::duels_game::ActiveModel as DuelsGameModel;
 use crate::entities::duels_round::ActiveModel as DuelsRoundModel;
 use crate::entities::guess::ActiveModel as GuessModel;
 use crate::entities::location::ActiveModel as LocationModel;
-use crate::entities::map::{ActiveModel as MapModel, ActiveModel, Column};
+use crate::entities::map::ActiveModel as MapModel;
 use crate::entities::player::ActiveModel as PlayerModel;
 use crate::entities::prelude::{CompTeam, DuelsGame, DuelsRound, FunTeam, Guess, Location, Map, Player, SoloGame, SoloRound};
 use crate::entities::solo_game::ActiveModel as SoloGameModel;
@@ -14,9 +14,8 @@ use crate::geo_guessr::{TeamGameMode, GameModeRatings, PlayerRankedSystemProgres
 use crate::geo_guessr::{GeoMode, MovementOption};
 use actix_web::{post, web, HttpResponse, Responder};
 use chrono::{DateTime, FixedOffset};
-use log::{debug, error, info};
-use sea_orm::{ActiveValue, DatabaseConnection, DbBackend, DbErr, EntityTrait, InsertResult, QueryTrait, TransactionTrait};
-use sea_orm::sea_query::OnConflict;
+use log::{error, info};
+use sea_orm::{ActiveValue, DatabaseConnection, DbErr, EntityTrait, TransactionTrait};
 use uuid::Uuid;
 
 pub async fn insert_comp_team(
@@ -363,7 +362,7 @@ async fn insert_player(player_id: &str, db: &DatabaseConnection) -> Result<Optio
     Ok(None)
 }
 
-#[post("/insert/duels-game")]
+#[post("/duels-game")]
 async fn insert_duels_game(
     game: web::Json<crate::geo_guessr::DuelsGame>,
     db: web::Data<DatabaseConnection>,
@@ -375,7 +374,6 @@ async fn insert_duels_game(
     let db = db.get_ref();
 
     let mut rounds = Vec::with_capacity(game.current_round_number as usize);
-    let mut locations = Vec::with_capacity(game.current_round_number as usize);
     let mut guesses = Vec::new();
     let mut players = Vec::new();
     let mut comp_teams = Vec::new();
@@ -412,7 +410,9 @@ async fn insert_duels_game(
             country_code: ActiveValue::Set(panorama.country_code.clone()),
         };
 
-        locations.push(location);
+        if let Err(error) = Location::insert(location).exec(db).await {
+            error!("Insert into Location Table failed! Error: {}", error);
+        }
 
         let guess_ids: Vec<String> = std::iter::repeat_with(|| Uuid::new_v4().to_string())
             .take(game.teams.len())
@@ -500,7 +500,6 @@ async fn insert_duels_game(
     match db.transaction::<_, _, DbErr>(|transaction| {
         Box::pin(async move {
             DuelsGame::insert(duels_game).exec(transaction).await?;
-            Location::insert_many(locations).exec(transaction).await?;
             Guess::insert_many(guesses).exec(transaction).await?;
             DuelsRound::insert_many(rounds).exec(transaction).await?;
 
@@ -517,16 +516,18 @@ async fn insert_duels_game(
             Ok(())
         })
     }).await {
-        Ok(()) => info!("all inserts succeeded"),
-        Err(err) => error!("insertion failed, rolling back: {}", err),
+        Ok(()) => info!("All inserts succeeded"),
+        Err(err) => error!("Insertion failed, rolling back: {}", err),
     }
 
-    let _ = Map::insert(map).exec(db).await;
+    if let Err(error) = Map::insert(map).exec(db).await {
+        error!("Insert into Map Table failed! Error: {}", error);
+    }
     
     HttpResponse::Created().body("")
 }
 
-#[post("/insert/solo-game")]
+#[post("/solo-game")]
 pub async fn insert_solo_game(
     game: web::Json<crate::geo_guessr::SoloGame>,
     db: web::Data<DatabaseConnection>,
@@ -544,7 +545,6 @@ pub async fn insert_solo_game(
     
     let mut player = None;
     let mut rounds = Vec::with_capacity(game.round as usize);
-    let mut locations = Vec::with_capacity(game.round as usize);
     let mut guesses = Vec::with_capacity(game.round as usize);
 
     match insert_player(&game.player.id, db).await {
@@ -567,7 +567,10 @@ pub async fn insert_solo_game(
             country_code: ActiveValue::Set(round.streak_location_code.clone())
         };
         
-        locations.push(location);
+        if let Err(error) = Location::insert(location).exec(db).await {
+            error!("Insert into Location Table failed! Error: {}", error);
+        }
+        
         let guess_id = Uuid::new_v4().to_string();
         
         let guess = GuessModel {
@@ -613,7 +616,6 @@ pub async fn insert_solo_game(
         Box::pin(async move {
             SoloGame::insert(solo_game).exec(transaction).await?;
             SoloRound::insert_many(rounds).exec(transaction).await?;
-            Location::insert_many(locations).exec(transaction).await?;
             Guess::insert_many(guesses).exec(transaction).await?;
 
             if let Some(player) = player {
@@ -623,11 +625,13 @@ pub async fn insert_solo_game(
             Ok(())
         })
     }).await {
-        Ok(()) => info!("all inserts succeeded"),
-        Err(err) => error!("insertion failed, rolling back: {}", err),
+        Ok(()) => info!("All inserts succeeded"),
+        Err(err) => error!("Insertion failed, rolling back: {}", err),
     }
 
-    let _ = Map::insert(map).exec(db).await;
-    
+    if let Err(error) = Map::insert(map).exec(db).await {
+        error!("Insert into Map Table failed! Error: {}", error);
+    }
+
     HttpResponse::Created().body("")
 }

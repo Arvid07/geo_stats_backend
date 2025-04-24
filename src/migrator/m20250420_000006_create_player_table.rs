@@ -4,7 +4,7 @@ pub struct Migration;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
-        "m20250420_000001_create_player_table"
+        "m20250420_000006_create_player_table"
     }
 }
 
@@ -22,8 +22,11 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(Player::Name).string().not_null())
-                    .col(ColumnDef::new(Player::NameHistory).array(ColumnType::String(StringLen::None)).not_null())
                     .col(ColumnDef::new(Player::CountryCode).string().not_null())
+                    .col(ColumnDef::new(Player::Rating).integer())
+                    .col(ColumnDef::new(Player::MovingRating).integer())
+                    .col(ColumnDef::new(Player::NoMoveRating).integer())
+                    .col(ColumnDef::new(Player::NMPZRating).integer())
                     .to_owned(),
             )
             .await
@@ -41,6 +44,9 @@ pub enum Player {
     Table,
     Id,
     Name,
-    NameHistory,
-    CountryCode
+    CountryCode,
+    Rating,
+    MovingRating,
+    NoMoveRating,
+    NMPZRating
 }

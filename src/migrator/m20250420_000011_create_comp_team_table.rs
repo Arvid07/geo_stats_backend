@@ -4,7 +4,7 @@ pub struct Migration;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
-        "m20250420_000011_create_team_table"
+        "m20250420_000011_create_comp_team_table"
     }
 }
 
@@ -14,23 +14,17 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(Team::Table)
+                    .table(CompTeam::Table)
                     .col(
-                        ColumnDef::new(Team::PlayerId1)
+                        ColumnDef::new(CompTeam::TeamId)
                             .string()
                             .not_null()
-                    ).col(
-                        ColumnDef::new(Team::PlayerId2)
-                            .string()
-                            .not_null()
+                            .primary_key()
                     )
-                    .col(ColumnDef::new(Team::Name).string().not_null())
-                    .col(ColumnDef::new(Team::NameHistory).array(ColumnType::String(StringLen::None)))
-                    .primary_key(
-                        Index::create()
-                            .col(Team::PlayerId1)
-                            .col(Team::PlayerId2)
-                    )
+                    .col(ColumnDef::new(CompTeam::PlayerId1).string().not_null())
+                    .col(ColumnDef::new(CompTeam::PlayerId2).string().not_null())
+                    .col(ColumnDef::new(CompTeam::Name).string().not_null())
+                    .col(ColumnDef::new(CompTeam::Rating).integer())
                     .to_owned(),
             )
             .await
@@ -38,16 +32,17 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(Team::Table).to_owned())
+            .drop_table(Table::drop().table(CompTeam::Table).to_owned())
             .await
     }
 }
 
 #[derive(Iden)]
-pub enum Team {
+pub enum CompTeam {
     Table,
+    TeamId,
     PlayerId1,
     PlayerId2,
     Name,
-    NameHistory
+    Rating
 }

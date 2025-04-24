@@ -4,7 +4,7 @@ pub struct Migration;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
-        "m20250420_000001_create_solo_game_table"
+        "m20250420_000007_create_solo_game_table"
     }
 }
 
@@ -22,8 +22,9 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(SoloGame::PlayerId).string().not_null())
-                    .col(ColumnDef::new(SoloGame::GameMode).string().not_null())
+                    .col(ColumnDef::new(SoloGame::GeoMode).string().not_null())
                     .col(ColumnDef::new(SoloGame::StartTime).string().not_null())
+                    .col(ColumnDef::new(SoloGame::MapId).string().not_null())
                     .to_owned(),
             )
             .await
@@ -41,6 +42,7 @@ pub enum SoloGame {
     Table,
     Id,
     PlayerId,
-    GameMode,
-    StartTime
+    GeoMode,
+    StartTime,
+    MapId
 }

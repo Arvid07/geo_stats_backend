@@ -4,7 +4,7 @@ pub struct Migration;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
-        "m20250420_000001_create_location_table"
+        "m20250420_000005_create_location_table"
     }
 }
 
@@ -23,10 +23,10 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(Location::Lat).double().not_null())
                     .col(ColumnDef::new(Location::Lng).double().not_null())
-                    .col(ColumnDef::new(Location::Heading).double())
-                    .col(ColumnDef::new(Location::Pitch).string())
-                    .col(ColumnDef::new(Location::Zoom).string())
-                    .col(ColumnDef::new(Location::CountryCode).string())
+                    .col(ColumnDef::new(Location::Heading).double().not_null())
+                    .col(ColumnDef::new(Location::Pitch).double().not_null())
+                    .col(ColumnDef::new(Location::Zoom).double().not_null())
+                    .col(ColumnDef::new(Location::CountryCode).string().not_null())
                     .to_owned(),
             )
             .await
