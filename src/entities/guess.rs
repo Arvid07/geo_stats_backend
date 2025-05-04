@@ -15,6 +15,7 @@ pub struct Model {
     pub time: Option<i32>,
     #[sea_orm(column_type = "Double")]
     pub distance: f64,
+    pub round_country_code: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

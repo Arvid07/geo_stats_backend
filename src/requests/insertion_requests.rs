@@ -6,56 +6,62 @@ use crate::entities::guess::ActiveModel as GuessModel;
 use crate::entities::location::ActiveModel as LocationModel;
 use crate::entities::map::ActiveModel as MapModel;
 use crate::entities::player::ActiveModel as PlayerModel;
-use crate::entities::prelude::{CompTeam, DuelsGame, DuelsRound, FunTeam, Guess, Location, Map, Player, SoloGame, SoloRound};
 use crate::entities::solo_game::ActiveModel as SoloGameModel;
 use crate::entities::solo_round::ActiveModel as SoloRoundModel;
+use crate::entities::prelude::{CompTeam, DuelsGame, DuelsRound, FunTeam, Guess, Location, Map, Player, SoloGame, SoloRound};
 use crate::geo_guessr::GeoMode::{Moving, NoMove, NoMovingZooming, NoPanning, NoPanningMoving, NoPanningZooming, NoZooming, NMPZ};
-use crate::geo_guessr::{TeamGameMode, GameModeRatings, PlayerRankedSystemProgress, RankedTeam, User};
+use crate::geo_guessr::{TeamGameMode, GameModeRatings, PlayerRankedSystemProgress, RankedTeam, User, RankedTeamDuelsProgress};
 use crate::geo_guessr::{GeoMode, MovementOption};
-use actix_web::{post, web, HttpResponse, Responder};
+use actix_web::{post, web, Error, HttpResponse, Responder};
+use actix_web::error::{ErrorBadRequest, ErrorInternalServerError};
 use chrono::{DateTime, FixedOffset};
 use log::{error, info};
-use sea_orm::{ActiveValue, DatabaseConnection, DbErr, EntityTrait, TransactionTrait};
+use reqwest::header::COOKIE;
+use sea_orm::{ActiveModelTrait, ActiveValue, DatabaseConnection, DbErr, EntityTrait, TransactionTrait};
 use uuid::Uuid;
+use crate::requests::geo_login;
 
-pub async fn insert_comp_team(
-    team_id: String,
-    player_id1: String,
-    player_id2: String,
+pub async fn get_comp_team(
+    team_id: &String,
+    player_id1: &String,
+    player_id2: &String,
     db: &DatabaseConnection,
-) -> Result<Option<CompTeamModel>, HttpResponse> {
-    let team_result = CompTeam::find_by_id(team_id.clone())
+    team_progress: &RankedTeamDuelsProgress,
+    client: &reqwest::Client
+) -> Result<Result<CompTeamModel, CompTeamModel>, Error> {
+    let team_result = CompTeam::find_by_id(team_id)
         .one(db)
         .await;
 
     if let Ok(team_option) = team_result {
-        if team_option.is_some() {
-            return Ok(None);
-        }
-        
         let ranked_team_request_url = format!(
             "https://www.geoguessr.com/api/v4/ranked-team-duels/teams/?userId={}&userId={}",
             player_id1, player_id2
         );
 
-        let team_response = reqwest::get(ranked_team_request_url)
+        let team_response = client.get(ranked_team_request_url)
+            .send()
             .await
-            .unwrap()
+            .map_err(|_| ErrorInternalServerError("Fetch Comp Team operation failed!"))?
             .json::<RankedTeam>()
             .await
-            .unwrap();
+            .map_err(|_| ErrorInternalServerError("Could not pass Json to Ranked Team"))?;
 
         let team = CompTeamModel {
-            team_id: ActiveValue::Set(team_id),
-            player_id1: ActiveValue::Set(player_id1),
-            player_id2: ActiveValue::Set(player_id2),
+            team_id: ActiveValue::Set(team_id.clone()),
+            player_id1: ActiveValue::Set(player_id1.clone()),
+            player_id2: ActiveValue::Set(player_id2.clone()),
             name: ActiveValue::Set(team_response.team_name),
-            rating: ActiveValue::Set(team_response.rating),
+            rating: ActiveValue::Set(team_progress.rating_after)
         };
         
-        Ok(Some(team))
+        if team_option.is_some() {
+            Ok(Ok(team))
+        } else {
+            Ok(Err(team))
+        }
     } else {
-        Err(HttpResponse::InternalServerError().body("Database operation get_comp_team failed!"))
+        Err(ErrorInternalServerError("Database operation get_comp_team failed!"))
     }
 }
 
@@ -63,7 +69,7 @@ async fn insert_fun_team(
     team_id: String,
     player_ids: Vec<String>,
     db: &DatabaseConnection,
-) -> Result<Option<FunTeamModel>, HttpResponse> {
+) -> Result<Option<FunTeamModel>, Error> {
     let team_result = FunTeam::find_by_id(team_id.clone())
         .one(db)
         .await;
@@ -80,7 +86,7 @@ async fn insert_fun_team(
 
         Ok(Some(team))
     } else {
-        Err(HttpResponse::InternalServerError().body("Database operation get_fun_team failed!"))
+        Err(ErrorInternalServerError("Database operation get_fun_team failed!"))
     }
 }
 
@@ -89,7 +95,7 @@ async fn insert_fun_team_duels_game_model(
     game_mode: TeamGameMode,
     geo_mode: GeoMode,
     db: &DatabaseConnection,
-) -> Result<(DuelsGameModel, Vec<FunTeamModel>), HttpResponse> {
+) -> Result<(DuelsGameModel, Vec<FunTeamModel>), Error> {
     let team_id1 = game.teams[0].id.clone();
     let team_id2 = game.teams[1].id.clone();
     let mut teams = Vec::new();
@@ -128,27 +134,35 @@ async fn insert_comp_team_duels_game_model(
     game_mode: TeamGameMode,
     geo_mode: GeoMode,
     db: &DatabaseConnection,
-) -> Result<(DuelsGameModel, Vec<CompTeamModel>), HttpResponse> {
+    client: &reqwest::Client
+) -> Result<(DuelsGameModel, Vec<CompTeamModel>, Vec<CompTeamModel>), Error> {
     let team_id1 = game.teams[0].id.clone();
     let team_id2 = game.teams[1].id.clone();
-    let mut teams = Vec::new();
+    let mut update_teams = Vec::new();
+    let mut insert_teams = Vec::new();
     
-    if let Some(team) = insert_comp_team(
-        team_id1.clone(),
-        game.teams[0].players[0].player_id.clone(),
-        game.teams[0].players[1].player_id.clone(),
-        db
+    match get_comp_team(
+        &team_id1,
+        &game.teams[0].players[0].player_id,
+        &game.teams[0].players[1].player_id,
+        db,
+        game.teams[0].players[0].progress_change.as_ref().unwrap().ranked_team_duels_progress.as_ref().unwrap(),
+        client
     ).await? {
-        teams.push(team);
+        Ok(update_team) => update_teams.push(update_team),
+        Err(insert_team) => insert_teams.push(insert_team)
     }
-    
-    if let Some(team) = insert_comp_team(
-        team_id2.clone(),
-        game.teams[1].players[0].player_id.clone(),
-        game.teams[1].players[1].player_id.clone(),
-        db
+
+    match get_comp_team(
+        &team_id2,
+        &game.teams[1].players[0].player_id,
+        &game.teams[1].players[1].player_id,
+        db,
+        game.teams[1].players[0].progress_change.as_ref().unwrap().ranked_team_duels_progress.as_ref().unwrap(),
+        client
     ).await? {
-        teams.push(team);
+        Ok(update_team) => update_teams.push(update_team),
+        Err(insert_team) => insert_teams.push(insert_team)
     }
     
     let mut rating_before_team1 = None;
@@ -174,7 +188,7 @@ async fn insert_comp_team_duels_game_model(
         rating_before_team2
     );
 
-    Ok((game_model, teams))
+    Ok((game_model, update_teams, insert_teams))
 }
 
 fn get_team_duels_game_model(
@@ -227,7 +241,7 @@ async fn get_duels_game_model(
         team_id1: ActiveValue::Set(players_team1[0].player_id.clone()),
         team_id2: ActiveValue::Set(players_team2[0].player_id.clone()),
         health_team1: ActiveValue::Set(game.teams[0].health),
-        health_team2: ActiveValue::Set(game.teams[0].health),
+        health_team2: ActiveValue::Set(game.teams[1].health),
         team_game_mode: ActiveValue::Set(game_mode.to_string()),
         geo_mode: ActiveValue::Set(geo_mode.to_string()),
         start_time: ActiveValue::Set(game.rounds[0].start_time.clone().unwrap()),
@@ -300,94 +314,119 @@ fn get_geo_mode(movement_options: &MovementOption) -> GeoMode {
     }
 }
 
-async fn insert_player(player_id: &str, db: &DatabaseConnection) -> Result<Option<PlayerModel>, HttpResponse> {
+async fn get_player_model(player_id: &str, db: &DatabaseConnection, client: &reqwest::Client) -> Result<Result<PlayerModel, PlayerModel>, Error> {
     if let Ok(player_option) = Player::find_by_id(player_id).one(db).await {
-        if player_option.is_none() {
-            let player_response = reqwest::get(format!("https://www.geoguessr.com/api/v3/users/{}", player_id))
-                .await
-                .map_err(|_| HttpResponse::InternalServerError().body("Fetch User operation failed!"))?
-                .json::<User>()
-                .await
-                .map_err(|_| HttpResponse::BadRequest().body(format!("User with id {} could not be found!", player_id)))?;
+        let player_response = client.get(format!("https://www.geoguessr.com/api/v3/users/{}", player_id))
+            .send()
+            .await
+            .map_err(|_| ErrorInternalServerError("Fetch User operation failed!"))?
+            .json::<User>()
+            .await
+            .map_err(|_| ErrorBadRequest(format!("User with id {} could not be found!", player_id)))?;
 
-            let player_ratings_option = reqwest::get(format!("https://www.geoguessr.com/api/v4/ranked-system/progress/{}", player_id))
-                .await
-                .map_err(|_| HttpResponse::InternalServerError().body(format!("Fetch Player Ratings operation failed for player {}!", player_id)))?
-                .json::<PlayerRankedSystemProgress>()
-                .await
-                .ok();
+        let player_ratings_option = client.get(format!("https://www.geoguessr.com/api/v4/ranked-system/progress/{}", player_id))
+            .send()
+            .await
+            .map_err(|_| ErrorInternalServerError(format!("Fetch Player Ratings operation failed for player {}!", player_id)))?
+            .json::<PlayerRankedSystemProgress>()
+            .await
+            .ok();
 
-            let player_rating;
-            let game_mode_ratings;
+        let player_rating;
+        let game_mode_ratings;
 
-            if player_ratings_option.is_none() {
-                player_rating = None;
+        if player_ratings_option.is_none() {
+            player_rating = None;
 
+            game_mode_ratings = GameModeRatings {
+                standard_duels: None,
+                no_move_duels: None,
+                nmpz_duels: None
+            }
+        } else {
+            let player_ratings = player_ratings_option.unwrap();
+            player_rating = player_ratings.rating;
+
+            if let Some(game_mode_ratings_result) = player_ratings.game_mode_ratings {
+                game_mode_ratings = game_mode_ratings_result;
+            } else {
                 game_mode_ratings = GameModeRatings {
                     standard_duels: None,
                     no_move_duels: None,
-                    nmpz: None
-                }
-            } else {
-                let player_ratings = player_ratings_option.unwrap();
-                player_rating = player_ratings.rating;
-
-                if let Some(game_mode_ratings_result) = player_ratings.game_mode_ratings {
-                    game_mode_ratings = game_mode_ratings_result;
-                } else {
-                    game_mode_ratings = GameModeRatings {
-                        standard_duels: None,
-                        no_move_duels: None,
-                        nmpz: None
-                    }
+                    nmpz_duels: None
                 }
             }
-            
-            let player = PlayerModel {
-                id: ActiveValue::Set(player_response.id),
-                name: ActiveValue::Set(player_response.nick),
-                country_code: ActiveValue::Set(player_response.country_code),
-                rating: ActiveValue::Set(player_rating),
-                moving_rating: ActiveValue::Set(game_mode_ratings.standard_duels),
-                no_move_rating: ActiveValue::Set(game_mode_ratings.no_move_duels),
-                nmpz_rating: ActiveValue::Set(game_mode_ratings.nmpz),
-            };
+        }
 
-            return Ok(Some(player));
+        let player = PlayerModel {
+            id: ActiveValue::Set(player_response.id),
+            name: ActiveValue::Set(player_response.nick),
+            country_code: ActiveValue::Set(player_response.country_code),
+            rating: ActiveValue::Set(player_rating),
+            moving_rating: ActiveValue::Set(game_mode_ratings.standard_duels),
+            no_move_rating: ActiveValue::Set(game_mode_ratings.no_move_duels),
+            nmpz_rating: ActiveValue::Set(game_mode_ratings.nmpz_duels),
+            avatar_pin: ActiveValue::Set(player_response.pin.url),
+            level: ActiveValue::Set(player_response.br.level),
+            is_pro_user: ActiveValue::Set(player_response.is_pro_user),
+            is_creator: ActiveValue::Set(player_response.is_creator)
+        };
+
+        if player_option.is_some() {
+            Ok(Ok(player))
+        } else {
+            Ok(Err(player))
         }
     } else {
-        return Err(HttpResponse::InternalServerError().body("Database operation get_player failed!"));
+        Err(ErrorInternalServerError("Database operation get_player failed!"))
     }
-    
-    Ok(None)
 }
 
-#[post("/duels-game")]
+#[post("/duels-game/{game_id}")]
 async fn insert_duels_game(
-    game: web::Json<crate::geo_guessr::DuelsGame>,
+    path: web::Path<String>,
     db: web::Data<DatabaseConnection>,
-) -> impl Responder {
+) -> Result<impl Responder, Error> {
+    let client = reqwest::Client::new();
+    let cookies = geo_login::get_cookies().await;
+    let game_id = path.into_inner();
+    
+    let game = client.get(format!("https://game-server.geoguessr.com/api/duels/{}", game_id))
+        .header(COOKIE, cookies)
+        .send()
+        .await
+        .map_err(|_| ErrorInternalServerError("Fetch Game operation failed!"))?
+        .json::<crate::geo_guessr::DuelsGame>()
+        .await
+        .map_err(|_| ErrorBadRequest(format!("Could not find Game with id: {}!", game_id)))?;
+
     if game.status.as_str() != "Finished" {
-        return HttpResponse::BadRequest().body("Game has not finished yet!");
+        return Err(ErrorBadRequest("Game has not finished yet!"));
     }
 
     let db = db.get_ref();
+    let game_mode = get_game_mode(game.teams[0].players.len(), game.teams[1].players.len(), game.options.is_rated);
+    let geo_mode = get_geo_mode(&game.options.movement_options);
 
     let mut rounds = Vec::with_capacity(game.current_round_number as usize);
     let mut guesses = Vec::new();
-    let mut players = Vec::new();
-    let mut comp_teams = Vec::new();
-    let mut fun_teams = Vec::new();
-    
+    let mut locations = Vec::new();
+    let mut insert_players = Vec::new();
+    let mut update_players = Vec::new();
+    let mut insert_comp_teams = Vec::new();
+    let mut update_comp_teams = Vec::new();
+    let mut insert_fun_teams = Vec::new();
+
     for team in game.teams.iter() {
         for player in team.players.iter() {
-            match insert_player(&player.player_id, db).await {
+            match get_player_model(&player.player_id, db, &client).await {
                 Ok(player_option) => {
-                    if let Some(player) = player_option {
-                        players.push(player)
+                    match player_option {
+                        Ok(update_player) => update_players.push(update_player),
+                        Err(insert_player) => insert_players.push(insert_player)
                     }
                 },
-                Err(internal_server_error) => return internal_server_error
+                Err(internal_server_error) => return Err(internal_server_error)
             }
         }
     }
@@ -410,9 +449,7 @@ async fn insert_duels_game(
             country_code: ActiveValue::Set(panorama.country_code.clone()),
         };
 
-        if let Err(error) = Location::insert(location).exec(db).await {
-            error!("Insert into Location Table failed! Error: {}", error);
-        }
+        locations.push(location);
 
         let guess_ids: Vec<String> = std::iter::repeat_with(|| Uuid::new_v4().to_string())
             .take(game.teams.len())
@@ -440,6 +477,7 @@ async fn insert_duels_game(
                         score: ActiveValue::Set(best_guess.score.unwrap()),
                         time: ActiveValue::Set(Some((guess_date - round_starting_date).num_seconds() as i32)),
                         distance: ActiveValue::Set(best_guess.distance),
+                        round_country_code: ActiveValue::Set(round.panorama.country_code.clone()),
                     };
 
                     guesses.push(guess);
@@ -470,70 +508,95 @@ async fn insert_duels_game(
     };
 
     let duels_game;
-    let game_mode = get_game_mode(game.teams[0].players.len(), game.teams[1].players.len(), game.options.is_rated);
-    let geo_mode = get_geo_mode(&game.options.movement_options);
     
     match game_mode {
         TeamGameMode::Duels | TeamGameMode::DuelsRanked => {
             duels_game = get_duels_game_model(&game, game_mode, geo_mode).await;
         },
         TeamGameMode::TeamDuelsRanked => {
-            match insert_comp_team_duels_game_model(&game, game_mode, geo_mode, db).await {
-                Ok((duels_game_model, team_models)) => {
+            match insert_comp_team_duels_game_model(&game, game_mode, geo_mode, db, &client).await {
+                Ok((duels_game_model, update_team_models, insert_team_models)) => {
                     duels_game = duels_game_model;
-                    comp_teams = team_models;
+                    update_comp_teams = update_team_models;
+                    insert_comp_teams = insert_team_models;
                 },
-                Err(error) => return error
+                Err(error) => return Err(error)
             };
         },
         TeamGameMode::TeamDuels | TeamGameMode::TeamFun => {
             match insert_fun_team_duels_game_model(&game, game_mode, geo_mode, db).await {
                 Ok((duels_game_model, team_models)) => {
                     duels_game = duels_game_model;
-                    fun_teams = team_models;
+                    insert_fun_teams = team_models;
                 },
-                Err(error) => return error
+                Err(error) => return Err(error)
             }
         }
     }
 
-    match db.transaction::<_, _, DbErr>(|transaction| {
+    match db.transaction::<_, _, DbErr>(|txn| {
         Box::pin(async move {
-            DuelsGame::insert(duels_game).exec(transaction).await?;
-            Guess::insert_many(guesses).exec(transaction).await?;
-            DuelsRound::insert_many(rounds).exec(transaction).await?;
+            DuelsGame::insert(duels_game).exec(txn).await?;
+            Guess::insert_many(guesses).exec(txn).await?;
+            DuelsRound::insert_many(rounds).exec(txn).await?;
 
-            if !players.is_empty() {
-                Player::insert_many(players).exec(transaction).await?;
+            for location in locations {
+                Location::insert(location).exec(txn).await?;
             }
-            if !comp_teams.is_empty() {
-                CompTeam::insert_many(comp_teams).exec(transaction).await?;
+            if !insert_players.is_empty() {
+                Player::insert_many(insert_players).exec(txn).await?;
             }
-            if !fun_teams.is_empty() {
-                FunTeam::insert_many(fun_teams).exec(transaction).await?;
+            for player in update_players {
+                player.update(txn).await?;
+            }
+            if !insert_comp_teams.is_empty() {
+                CompTeam::insert_many(insert_comp_teams).exec(txn).await?;
+            }
+            for team in update_comp_teams {
+                team.update(txn).await?;
+            }
+            if !insert_fun_teams.is_empty() {
+                FunTeam::insert_many(insert_fun_teams).exec(txn).await?;
             }
 
             Ok(())
         })
     }).await {
         Ok(()) => info!("All inserts succeeded"),
-        Err(err) => error!("Insertion failed, rolling back: {}", err),
-    }
+        Err(err) => {
+            error!("Insertion failed, Rolling back: {}", err);
 
-    if let Err(error) = Map::insert(map).exec(db).await {
-        error!("Insert into Map Table failed! Error: {}", error);
+            return if err.to_string().contains("duplicate key value violates unique constraint") {
+                Err(ErrorBadRequest(format!("Game with id {} does already exist!", game.game_id)))
+            } else {
+                Err(ErrorInternalServerError(err.to_string()))
+            }
+        }
     }
     
-    HttpResponse::Created().body("")
+    let _ = Map::insert(map).exec(db).await;
+    
+    Ok(HttpResponse::Created().body(""))
 }
 
-#[post("/solo-game")]
+#[post("/solo-game/{game_id}")]
 pub async fn insert_solo_game(
-    game: web::Json<crate::geo_guessr::SoloGame>,
+    path: web::Path<String>,
     db: web::Data<DatabaseConnection>,
-) -> impl Responder {
+) -> Result<impl Responder, Error> {
+    let client = reqwest::Client::new();
+    let game_id = path.into_inner();
+
+    let game = client.get(format!("https://www.geoguessr.com/api/v3/games/{}", game_id))
+        .send()
+        .await
+        .map_err(|_| ErrorInternalServerError("Fetch Game operation failed!"))?
+        .json::<crate::geo_guessr::SoloGame>()
+        .await
+        .map_err(|_| ErrorBadRequest(format!("Could not find Game with id: {}!", game_id)))?;
+    
     if game.state.as_str() != "finished" {
-        return HttpResponse::BadRequest().body("Game has not finished yet!");
+        return Err(ErrorBadRequest("Game has not finished yet!"));
     }
     
     let db = db.get_ref();
@@ -543,17 +606,18 @@ pub async fn insert_solo_game(
         forbid_rotating: game.forbid_rotating,
     });
     
-    let mut player = None;
+    let mut insert_player = None;
     let mut rounds = Vec::with_capacity(game.round as usize);
     let mut guesses = Vec::with_capacity(game.round as usize);
-
-    match insert_player(&game.player.id, db).await {
+    let mut locations = Vec::with_capacity(game.round as usize);
+    
+    match get_player_model(&game.player.id, db, &client).await {
         Ok(player_option) => {
-            if let Some(player_model) = player_option {
-                player = Some(player_model);
+            if let Err(player_model) = player_option {
+                insert_player = Some(player_model);
             }
         },
-        Err(internal_server_error) => return internal_server_error
+        Err(internal_server_error) => return Err(internal_server_error)
     }
     
     for (round_number, round) in game.rounds.iter().enumerate() {
@@ -566,10 +630,8 @@ pub async fn insert_solo_game(
             zoom: ActiveValue::Set(round.zoom),
             country_code: ActiveValue::Set(round.streak_location_code.clone())
         };
-        
-        if let Err(error) = Location::insert(location).exec(db).await {
-            error!("Insert into Location Table failed! Error: {}", error);
-        }
+
+        locations.push(location);
         
         let guess_id = Uuid::new_v4().to_string();
         
@@ -579,7 +641,8 @@ pub async fn insert_solo_game(
             lng: ActiveValue::Set(game.player.guesses[round_number].lng),
             score: ActiveValue::Set(game.player.guesses[round_number].round_score_in_points),
             time: ActiveValue::NotSet,
-            distance: ActiveValue::Set(game.player.guesses[round_number].distance_in_meters)
+            distance: ActiveValue::Set(game.player.guesses[round_number].distance_in_meters),
+            round_country_code: ActiveValue::Set(round.streak_location_code.clone()),
         };
         
         guesses.push(guess);
@@ -612,26 +675,35 @@ pub async fn insert_solo_game(
         lng2: ActiveValue::Set(game.bounds.max.lng)
     };
     
-    match db.transaction::<_, _, DbErr>(|transaction| {
+    match db.transaction::<_, _, DbErr>(|txn| {
         Box::pin(async move {
-            SoloGame::insert(solo_game).exec(transaction).await?;
-            SoloRound::insert_many(rounds).exec(transaction).await?;
-            Guess::insert_many(guesses).exec(transaction).await?;
-
-            if let Some(player) = player {
-                Player::insert(player).exec(transaction).await?;
+            SoloGame::insert(solo_game).exec(txn).await?;
+            SoloRound::insert_many(rounds).exec(txn).await?;
+            Guess::insert_many(guesses).exec(txn).await?;
+            
+            for location in locations {
+                Location::insert(location).exec(txn).await?;
             }
-
+            if let Some(player) = insert_player {
+                Player::insert(player).exec(txn).await?;
+            }
+            
             Ok(())
         })
     }).await {
         Ok(()) => info!("All inserts succeeded"),
-        Err(err) => error!("Insertion failed, rolling back: {}", err),
+        Err(err) => {
+            error!("Insertion failed, Rolling back: {}", err);
+
+            return if err.to_string().contains("duplicate key value violates unique constraint") {
+                Err(ErrorBadRequest(format!("Game with id {} does already exist!", game_id)))
+            } else {
+                Err(ErrorInternalServerError(err.to_string()))
+            }
+        }
     }
 
-    if let Err(error) = Map::insert(map).exec(db).await {
-        error!("Insert into Map Table failed! Error: {}", error);
-    }
+    let _ = Map::insert(map).exec(db).await;
 
-    HttpResponse::Created().body("")
+    Ok(HttpResponse::Created().body(""))
 }

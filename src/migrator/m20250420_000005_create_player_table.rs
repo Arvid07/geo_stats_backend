@@ -23,6 +23,10 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(Player::Name).string().not_null())
                     .col(ColumnDef::new(Player::CountryCode).string().not_null())
+                    .col(ColumnDef::new(Player::AvatarPin).string().not_null())
+                    .col(ColumnDef::new(Player::Level).integer().not_null())
+                    .col(ColumnDef::new(Player::IsProUser).boolean().not_null())
+                    .col(ColumnDef::new(Player::IsCreator).boolean().not_null())
                     .col(ColumnDef::new(Player::Rating).integer())
                     .col(ColumnDef::new(Player::MovingRating).integer())
                     .col(ColumnDef::new(Player::NoMoveRating).integer())
@@ -45,6 +49,10 @@ pub enum Player {
     Id,
     Name,
     CountryCode,
+    AvatarPin,
+    Level,
+    IsProUser,
+    IsCreator,
     Rating,
     MovingRating,
     NoMoveRating,

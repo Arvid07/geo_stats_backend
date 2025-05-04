@@ -1,7 +1,7 @@
 use std::fmt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub enum GeoMode {
     Moving,
     NoMove,
@@ -13,7 +13,7 @@ pub enum GeoMode {
     NoZooming
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Serialize)]
 pub enum TeamGameMode {
     Duels,
     DuelsRanked,
@@ -62,7 +62,7 @@ pub struct PlayerRankedSystemProgress {
 pub struct GameModeRatings {
     pub standard_duels: Option<i32>,
     pub no_move_duels: Option<i32>,
-    pub nmpz: Option<i32> // TODO: might be wrong
+    pub nmpz_duels: Option<i32>
 }
 
 #[derive(Deserialize, Debug)]
@@ -106,9 +106,9 @@ pub struct Br {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct UserPin {
-    url: String,
-    anchor: String,
-    is_default: bool
+    pub url: String,
+    pub anchor: String,
+    pub is_default: bool
 }
 
 #[derive(Deserialize, Debug)]
@@ -392,7 +392,6 @@ pub struct DuelsGuess {
 pub struct ProgressChange {
     // pub xp_progressions: Vec<>,
     // pub awarded_xp: Vec<>,
-    pub medal: i32,
     // pub competitive_progress: Option<>,
     pub ranked_system_progress: Option<RankedSystemProgress>,
     pub ranked_team_duels_progress: Option<RankedTeamDuelsProgress>

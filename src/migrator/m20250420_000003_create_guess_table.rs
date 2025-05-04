@@ -26,6 +26,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Guess::Score).integer().not_null())
                     .col(ColumnDef::new(Guess::Time).integer())
                     .col(ColumnDef::new(Guess::Distance).double().not_null())
+                    .col(ColumnDef::new(Guess::RoundCountryCode).string().not_null())
                     .to_owned(),
             )
             .await
@@ -46,5 +47,6 @@ pub enum Guess {
     Lng,
     Score,
     Time,
-    Distance
+    Distance,
+    RoundCountryCode
 }

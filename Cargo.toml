@@ -12,7 +12,10 @@ serde = { version = "1.0", features = ["derive"] }
 sea-orm = { version = "1.1.10", features = [ "sqlx-postgres", "runtime-async-std-native-tls", "macros" ] }
 sea-orm-migration = "1.1.10"
 uuid = { version = "1.16.0", features = ["v4"]}
-chrono = "0.4.40"
+chrono = { version = "0.4.41", features = ["clock"]}
 env_logger = "0.11.8"
-reqwest = { version = "0.12.15", features = ["json"] }
+reqwest = { version = "0.12.15", features = ["json", "cookies"] }
 log = "0.4.27"
+lazy_static = "1.5.0"
+tokio = "1.44.2"
+
