@@ -13,7 +13,7 @@ use crate::geo_guessr::GeoMode::{Moving, NoMove, NoMovingZooming, NoPanning, NoP
 use crate::geo_guessr::{TeamGameMode, GameModeRatings, PlayerRankedSystemProgress, RankedTeam, User, RankedTeamDuelsProgress};
 use crate::geo_guessr::{GeoMode, MovementOption};
 use actix_web::{post, web, Error, HttpResponse, Responder};
-use actix_web::error::{ErrorBadRequest, ErrorInternalServerError};
+use actix_web::error::{ErrorBadRequest, ErrorInternalServerError, ErrorNotFound};
 use chrono::{DateTime, FixedOffset};
 use log::{error, info};
 use reqwest::header::COOKIE;
@@ -322,7 +322,7 @@ async fn get_player_model(player_id: &str, db: &DatabaseConnection, client: &req
             .map_err(|_| ErrorInternalServerError("Fetch User operation failed!"))?
             .json::<User>()
             .await
-            .map_err(|_| ErrorBadRequest(format!("User with id {} could not be found!", player_id)))?;
+            .map_err(|_| ErrorNotFound(format!("User with id {} could not be found!", player_id)))?;
 
         let player_ratings_option = client.get(format!("https://www.geoguessr.com/api/v4/ranked-system/progress/{}", player_id))
             .send()

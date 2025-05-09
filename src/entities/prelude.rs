@@ -8,5 +8,7 @@ pub use super::guess::Entity as Guess;
 pub use super::location::Entity as Location;
 pub use super::map::Entity as Map;
 pub use super::player::Entity as Player;
+pub use super::session::Entity as Session;
 pub use super::solo_game::Entity as SoloGame;
 pub use super::solo_round::Entity as SoloRound;
+pub use super::user::Entity as User;

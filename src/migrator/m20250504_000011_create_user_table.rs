@@ -4,7 +4,7 @@ pub struct Migration;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
-        "m20250420_000009_create_fun_team_table"
+        "m20250420_000011_create_user_table"
     }
 }
 
@@ -14,14 +14,17 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(FunTeam::Table)
+                    .table(User::Table)
                     .col(
-                        ColumnDef::new(FunTeam::TeamId)
+                        ColumnDef::new(User::Id)
                             .string()
                             .not_null()
                             .primary_key()
                     )
-                    .col(ColumnDef::new(FunTeam::PlayerIds).array(ColumnType::String(StringLen::None)).not_null())
+                    .col(ColumnDef::new(User::Email).string().not_null())
+                    .col(ColumnDef::new(User::Salt).string().not_null())
+                    .col(ColumnDef::new(User::SaltedPasswordHash).string().not_null())
+                    .col(ColumnDef::new(User::PlayerId).string())
                     .to_owned(),
             )
             .await
@@ -29,14 +32,17 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(FunTeam::Table).to_owned())
+            .drop_table(Table::drop().table(User::Table).to_owned())
             .await
     }
 }
 
 #[derive(Iden)]
-pub enum FunTeam {
+pub enum User {
     Table,
-    TeamId,
-    PlayerIds
+    Id,
+    Email,
+    Salt,
+    SaltedPasswordHash,
+    PlayerId
 }

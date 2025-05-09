@@ -21,7 +21,7 @@ struct GuestRequest {
 pub async fn get_cookies() -> String {
     let mut expire = COOKIE_EXPIRE_DATE.lock().await;
 
-    if *expire < Utc::now() + Duration::new(15, 0).unwrap() {
+    if *expire < Utc::now() + Duration::seconds(15) {
         let new_expire = login().await.expect("Geo login failed!");
         *expire = new_expire;
     }

@@ -1,18 +1,22 @@
-use crate::entities::prelude::{DuelsGame, DuelsRound, Guess};
+use crate::entities::player::Model as PlayerModel;
+use crate::entities::prelude::{DuelsGame, DuelsRound, Guess, Player};
 use crate::entities::{duels_game, guess};
 use crate::geo_guessr::{GeoMode, TeamGameMode};
-use actix_web::{get, web, Error, HttpResponse, Responder};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use crate::login::get_player_id_from_session;
+use actix_web::error::{ErrorConflict, ErrorInternalServerError, ErrorNotFound, ErrorUnauthorized};
+use actix_web::{get, web, Error, HttpRequest, HttpResponse, Responder};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use actix_web::error::{ErrorInternalServerError, ErrorNotFound};
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct DuelsGameRequest {
     game_id: String
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct DuelsGameResponse {
     game_id: String,
     team_id1: String,
@@ -22,14 +26,15 @@ struct DuelsGameResponse {
     game_mode: TeamGameMode,
     geo_mode: GeoMode,
     start_time: String,
-    map_id: String,
+    map_id: String
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CompStatsResponse {
-    stats: HashMap<String, i32>,
-    enemy_stats: HashMap<String, i32>
+struct HomePageResponse {
+    stats: Option<HashMap<String, i32>>,
+    enemy_stats: Option<HashMap<String, i32>>,
+    player: PlayerModel
 }
 
 #[get("/duels-game")]
@@ -78,13 +83,30 @@ async fn get_avg_score(db: &DatabaseConnection, guess_ids: Vec<String>, error_me
     Ok(score.into_iter().map(|(country_code, (points, amount))| (country_code, points / amount)).collect())
 }
 
-#[get("/games/comp-duels-avg/{player_id}")]
-pub async fn get_comp_duels_avg(
+#[get("/home-page")]
+pub async fn get_home_page(
     db: web::Data<DatabaseConnection>,
-    path: web::Path<String>
+    http_request: HttpRequest
 ) -> Result<impl Responder, Error> {
+    let session_id = match http_request.cookie("sessionId") {
+        Some(cookie) => {
+            String::from(cookie.value())
+        },
+        None => return Err(ErrorUnauthorized("Missing `sessionId` cookie!"))
+    };
+    
     let db = db.get_ref();
-    let player_id = path.into_inner();
+    let player_id = get_player_id_from_session(&session_id, db).await?;
+    
+    let player = match Player::find_by_id(&player_id).one(db).await {
+        Ok(player_option) => {
+            match player_option {
+                Some(player) => player,
+                None => return Err(ErrorConflict("Account is not linked correctly!"))
+            }
+        },
+        Err(err) => return Err(ErrorInternalServerError(err.to_string()))
+    };
     
     let games_rounds = match DuelsGame::find()
         .filter(duels_game::Column::TeamGameMode.eq(TeamGameMode::DuelsRanked.to_string())
@@ -94,7 +116,13 @@ pub async fn get_comp_duels_avg(
     {
         Ok(games_found) => {
             if games_found.is_empty() {
-                return Err(ErrorNotFound(format!("Could not find any comp duel games for player {}", player_id)));
+                let response = HomePageResponse {
+                    stats: None,
+                    enemy_stats: None,
+                    player,
+                };
+                
+                return Ok(HttpResponse::PartialContent().json(response));
             }
             games_found
         }
@@ -118,13 +146,19 @@ pub async fn get_comp_duels_avg(
             location_ids.push(round.location_id);
         }
     }
+
+    let (avg_score, enemy_avg_score) = match tokio::try_join!(
+        get_avg_score(db, guess_ids, format!("Could not find any guesses for player: {}", player_id)),
+        get_avg_score(db, enemy_guess_ids, String::from("Could not find any enemy guesses"))
+    ) {
+        Ok((a, b)) => (a, b),
+        Err(err) => return Err(ErrorNotFound(err))
+    };
     
-    let avg_score = get_avg_score(db, guess_ids, format!("Could not find any guesses for player: {}", player_id)).await?;
-    let enemy_avg_score = get_avg_score(db, enemy_guess_ids, String::from("Could not find any enemy guesses")).await?;
-    
-    let response = CompStatsResponse {
-        stats: avg_score,
-        enemy_stats: enemy_avg_score
+    let response = HomePageResponse {
+        stats: Some(avg_score),
+        enemy_stats: Some(enemy_avg_score),
+        player,
     };
     
     Ok(HttpResponse::Ok().json(response))

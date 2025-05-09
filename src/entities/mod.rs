@@ -10,5 +10,7 @@ pub mod guess;
 pub mod location;
 pub mod map;
 pub mod player;
+pub mod session;
 pub mod solo_game;
 pub mod solo_round;
+pub mod user;

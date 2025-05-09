@@ -4,7 +4,7 @@ pub struct Migration;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
-        "m20250420_000009_create_fun_team_table"
+        "m20250420_000012_create_session_table"
     }
 }
 
@@ -14,14 +14,15 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(FunTeam::Table)
+                    .table(Session::Table)
                     .col(
-                        ColumnDef::new(FunTeam::TeamId)
+                        ColumnDef::new(Session::Id)
                             .string()
                             .not_null()
                             .primary_key()
                     )
-                    .col(ColumnDef::new(FunTeam::PlayerIds).array(ColumnType::String(StringLen::None)).not_null())
+                    .col(ColumnDef::new(Session::UserId).string().not_null())
+                    .col(ColumnDef::new(Session::ExpireDate).string().not_null())
                     .to_owned(),
             )
             .await
@@ -29,14 +30,15 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(FunTeam::Table).to_owned())
+            .drop_table(Table::drop().table(Session::Table).to_owned())
             .await
     }
 }
 
 #[derive(Iden)]
-pub enum FunTeam {
+pub enum Session {
     Table,
-    TeamId,
-    PlayerIds
+    Id,
+    UserId,
+    ExpireDate
 }

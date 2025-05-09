@@ -448,3 +448,55 @@ pub struct Points {
     pub first_win_of_the_day: Option<i32>,
     pub win_rounds: Option<i32>
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ActivityAvatar {
+    pub url: String,
+    pub anchor: String,
+    #[serde(rename = "isDefault")]
+    pub is_default: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ActivityUser {
+    pub id: String,
+    pub nick: String,
+    #[serde(rename = "isVerified")]
+    pub is_verified: bool,
+    pub flair: i64,
+    pub avatar: ActivityAvatar,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Entry {
+    #[serde(rename = "type")]
+    pub r#type: i64,
+    pub time: String,
+    pub user: ActivityUser,
+    pub payload: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ActivityGame {
+    pub entries: Vec<Entry>,
+    #[serde(rename = "paginationToken")]
+    pub pagination_token: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct PayloadGameInfo {
+    #[serde(rename = "gameId")]
+    pub game_id: String,
+    #[serde(rename = "partyId")]
+    pub game_mode: String,
+    #[serde(rename = "gameMode")]
+    pub competitive_game_mode: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Payload {
+    #[serde(rename = "type")]
+    pub r#type: i64,
+    pub time: String,
+    pub payload: PayloadGameInfo,
+}

@@ -8,6 +8,8 @@ mod m20250420_000007_create_solo_round_table;
 mod m20250420_00008_create_comp_team_table;
 mod m20250420_00009_create_fun_team_table;
 mod m20250420_000010_create_map_table;
+mod m20250504_000011_create_user_table;
+mod m20250420_000012_create_session_table;
 
 use sea_orm_migration::prelude::*;
 
@@ -26,7 +28,9 @@ impl MigratorTrait for Migrator {
             Box::new(m20250420_000007_create_solo_round_table::Migration),
             Box::new(m20250420_00008_create_comp_team_table::Migration),
             Box::new(m20250420_00009_create_fun_team_table::Migration),
-            Box::new(m20250420_000010_create_map_table::Migration)
+            Box::new(m20250420_000010_create_map_table::Migration),
+            Box::new(m20250504_000011_create_user_table::Migration),
+            Box::new(m20250420_000012_create_session_table::Migration)
         ]
     }
 }
