@@ -21,12 +21,16 @@ impl MigrationTrait for Migration {
                             .not_null()
                             .primary_key(),
                     )
+                    .col(ColumnDef::new(Guess::GameId).string().not_null())
+                    .col(ColumnDef::new(Guess::RoundId).string().not_null())
+                    .col(ColumnDef::new(Guess::TeamId).string().not_null())
                     .col(ColumnDef::new(Guess::Lat).double().not_null())
                     .col(ColumnDef::new(Guess::Lng).double().not_null())
                     .col(ColumnDef::new(Guess::Score).integer().not_null())
                     .col(ColumnDef::new(Guess::Time).integer())
                     .col(ColumnDef::new(Guess::Distance).double().not_null())
                     .col(ColumnDef::new(Guess::RoundCountryCode).string().not_null())
+                    .col(ColumnDef::new(Guess::IsTeamsBest).boolean().not_null())
                     .to_owned(),
             )
             .await
@@ -43,10 +47,14 @@ impl MigrationTrait for Migration {
 pub enum Guess {
     Table,
     Id,
+    GameId,
+    RoundId,
+    TeamId,
     Lat,
     Lng,
     Score,
     Time,
     Distance,
-    RoundCountryCode
+    RoundCountryCode,
+    IsTeamsBest
 }

@@ -4,7 +4,7 @@ pub struct Migration;
 
 impl MigrationName for Migration {
     fn name(&self) -> &str {
-        "m20250420_000002_create_solo_round_table"
+        "m20250420_000002_create_duels_round_table"
     }
 }
 
@@ -23,8 +23,6 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(DuelsRound::GameId).string().not_null())
                     .col(ColumnDef::new(DuelsRound::LocationId).string().not_null())
-                    .col(ColumnDef::new(DuelsRound::GuessIdTeam1).string().not_null())
-                    .col(ColumnDef::new(DuelsRound::GuessIdTeam2).string().not_null())
                     .col(ColumnDef::new(DuelsRound::RoundNumber).integer().not_null())
                     .col(ColumnDef::new(DuelsRound::DamageMultiplier).double().not_null())
                     .to_owned(),
@@ -45,8 +43,6 @@ pub enum DuelsRound {
     Id,
     GameId,
     LocationId,
-    GuessIdTeam1,
-    GuessIdTeam2,
     RoundNumber,
     DamageMultiplier
 }

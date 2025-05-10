@@ -188,7 +188,7 @@ async fn insert_player_model(player_id: &str, db: &DatabaseConnection, client: &
 }
 
 #[post("/login")]
-pub async fn user_login(
+async fn user_login(
     db: web::Data<DatabaseConnection>,
     request: web::Json<UserLoginRequest>,
     http_request: HttpRequest
@@ -229,7 +229,7 @@ pub async fn user_login(
 }
 
 #[post("/signup")]
-pub async fn user_signup(
+async fn user_signup(
     db: web::Data<DatabaseConnection>,
     request: web::Json<UserLoginRequest>,
     http_request: HttpRequest
@@ -282,7 +282,7 @@ pub async fn user_signup(
 }
 
 #[post("/verify-email")]
-pub async fn verify_email(
+async fn verify_email(
     db: web::Data<DatabaseConnection>,
     request: web::Json<UserVerifyEmailRequest>
 ) -> Result<impl Responder, Error> {
@@ -333,7 +333,7 @@ pub async fn verify_email(
 }
 
 #[post("/link-account")]
-pub async fn link_account(
+async fn link_account(
     db: web::Data<DatabaseConnection>,
     request: web::Json<UserLinkAccountRequest>,
     http_request: HttpRequest
@@ -380,7 +380,7 @@ pub async fn link_account(
 }
 
 #[post("/logout")]
-pub async fn log_out(
+async fn log_out(
     db: web::Data<DatabaseConnection>,
     http_request: HttpRequest
 ) -> Result<impl Responder, Error> {

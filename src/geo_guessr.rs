@@ -290,8 +290,8 @@ pub struct Map {
 #[serde(rename_all = "camelCase")]
 pub struct Result {
     pub is_draw: bool,
-    pub winning_team_id: String,
-    pub winner_style: String
+    pub winning_team_id: Option<String>,
+    pub winner_style: Option<String>
 }
 
 #[derive(Deserialize, Debug)]
@@ -450,24 +450,25 @@ pub struct Points {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct ActivityAvatar {
     pub url: String,
     pub anchor: String,
-    #[serde(rename = "isDefault")]
     pub is_default: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct ActivityUser {
     pub id: String,
     pub nick: String,
-    #[serde(rename = "isVerified")]
     pub is_verified: bool,
     pub flair: i64,
     pub avatar: ActivityAvatar,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct Entry {
     #[serde(rename = "type")]
     pub r#type: i64,
@@ -477,23 +478,22 @@ pub struct Entry {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct ActivityGame {
     pub entries: Vec<Entry>,
-    #[serde(rename = "paginationToken")]
     pub pagination_token: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct PayloadGameInfo {
-    #[serde(rename = "gameId")]
     pub game_id: String,
-    #[serde(rename = "partyId")]
     pub game_mode: String,
-    #[serde(rename = "gameMode")]
-    pub competitive_game_mode: String,
+    // pub competitive_game_mode: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct Payload {
     #[serde(rename = "type")]
     pub r#type: i64,

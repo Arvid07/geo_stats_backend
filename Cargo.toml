@@ -18,8 +18,10 @@ env_logger = "0.11.8"
 reqwest = { version = "0.12.15", features = ["json", "cookies"] }
 log = "0.4.27"
 lazy_static = "1.5.0"
-tokio = { version = "1.45.0", features = ["macros"]}
+tokio = { version = "1.45.0", features = ["full"]}
+futures = "0.3.31"
 ring = "0.17.14"
-resend-rs = "0.14.1"
+resend-rs = "0.15.0"
 regex = "1.11.1"
 base64 = "0.22.1"
+geoutils = "0.5.1"

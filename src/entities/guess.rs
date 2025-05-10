@@ -7,6 +7,9 @@ use sea_orm::entity::prelude::*;
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
+    pub game_id: String,
+    pub round_id: String,
+    pub team_id: String,
     #[sea_orm(column_type = "Double")]
     pub lat: f64,
     #[sea_orm(column_type = "Double")]
@@ -16,9 +19,24 @@ pub struct Model {
     #[sea_orm(column_type = "Double")]
     pub distance: f64,
     pub round_country_code: String,
+    pub is_teams_best: bool,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
-pub enum Relation {}
+pub enum Relation {
+    #[sea_orm(
+        belongs_to = "super::duels_game::Entity",
+        from = "Column::GameId",
+        to = "super::duels_game::Column::Id"
+    )]
+    Game
+}
+
+impl Related<super::duels_game::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Game.def()
+    }
+}
+
 
 impl ActiveModelBehavior for ActiveModel {}

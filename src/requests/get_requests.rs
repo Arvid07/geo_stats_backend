@@ -1,33 +1,13 @@
 use crate::entities::player::Model as PlayerModel;
-use crate::entities::prelude::{DuelsGame, DuelsRound, Guess, Player};
+use crate::entities::prelude::{DuelsGame, Guess, Player};
 use crate::entities::{duels_game, guess};
-use crate::geo_guessr::{GeoMode, TeamGameMode};
+use crate::geo_guessr::TeamGameMode;
 use crate::login::get_player_id_from_session;
-use actix_web::error::{ErrorConflict, ErrorInternalServerError, ErrorNotFound, ErrorUnauthorized};
+use actix_web::error::{ErrorConflict, ErrorInternalServerError, ErrorUnauthorized};
 use actix_web::{get, web, Error, HttpRequest, HttpResponse, Responder};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, ModelTrait, QueryFilter};
-use serde::{Deserialize, Serialize};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use serde::Serialize;
 use std::collections::HashMap;
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct DuelsGameRequest {
-    game_id: String
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DuelsGameResponse {
-    game_id: String,
-    team_id1: String,
-    team_id2: String,
-    health_team1: usize,
-    health_team2: usize,
-    game_mode: TeamGameMode,
-    geo_mode: GeoMode,
-    start_time: String,
-    map_id: String
-}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,34 +17,11 @@ struct HomePageResponse {
     player: PlayerModel
 }
 
-#[get("/duels-game")]
-pub async fn get_duels_game(
-    db: web::Data<DatabaseConnection>,
-    request: web::Json<DuelsGameRequest>
-) -> impl Responder {
-    let db = db.get_ref();
-    
-    let (game, rounds) = match DuelsGame::find_by_id(request.game_id.clone()).find_with_related(DuelsRound).all(db).await {
-        Ok(response) => {
-            if response.is_empty() {
-                return HttpResponse::NotFound().body(format!("Could not find Game with id {}", request.game_id));
-            }
-            
-            response.into_iter().next().unwrap()
-        }
-        Err(_) => return HttpResponse::InternalServerError().body("Fetching Game operation failed!")
-    };
-    
-    let guess_ids: Vec<(&str, &str)> = rounds.iter().map(|round| (round.guess_id_team1.as_str(), round.guess_id_team2.as_str())).collect();
-    
-    HttpResponse::Ok().body("")
-}
-
 async fn get_avg_score(db: &DatabaseConnection, guess_ids: Vec<String>, error_message: String) -> Result<HashMap<String, i32>, Error> {
     let guesses = match Guess::find().filter(guess::Column::Id.is_in(guess_ids)).all(db).await {
         Ok(guesses_found) => {
             if guesses_found.is_empty() {
-                return Err(ErrorNotFound(error_message));
+                return Err(ErrorInternalServerError(error_message));
             }
             guesses_found
         }
@@ -108,10 +65,10 @@ pub async fn get_home_page(
         Err(err) => return Err(ErrorInternalServerError(err.to_string()))
     };
     
-    let games_rounds = match DuelsGame::find()
+    let games_guesses = match DuelsGame::find()
         .filter(duels_game::Column::TeamGameMode.eq(TeamGameMode::DuelsRanked.to_string())
                 .and(duels_game::Column::TeamId1.eq(&player_id).or(duels_game::Column::TeamId2.eq(&player_id)))
-        ).find_with_related(DuelsRound)
+        ).find_with_related(Guess)
         .all(db).await 
     {
         Ok(games_found) => {
@@ -128,22 +85,17 @@ pub async fn get_home_page(
         }
         Err(err) => return Err(ErrorInternalServerError(err.to_string()))
     };
-
-    let mut location_ids = Vec::new();
+    
     let mut guess_ids = Vec::new();
     let mut enemy_guess_ids = Vec::new();
-
-    for (game, rounds) in games_rounds {
-        for round in rounds {
-            if game.team_id1 == player_id {
-                guess_ids.push(round.guess_id_team1);
-                enemy_guess_ids.push(round.guess_id_team2);
+    
+    for (_, guesses) in games_guesses {
+        for guess in guesses {
+            if guess.team_id == player_id {
+                guess_ids.push(guess.id);
             } else {
-                guess_ids.push(round.guess_id_team2);
-                enemy_guess_ids.push(round.guess_id_team1);
+                enemy_guess_ids.push(guess.id);
             }
-            
-            location_ids.push(round.location_id);
         }
     }
 
@@ -152,7 +104,7 @@ pub async fn get_home_page(
         get_avg_score(db, enemy_guess_ids, String::from("Could not find any enemy guesses"))
     ) {
         Ok((a, b)) => (a, b),
-        Err(err) => return Err(ErrorNotFound(err))
+        Err(err) => return Err(ErrorInternalServerError(err))
     };
     
     let response = HomePageResponse {

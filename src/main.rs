@@ -8,8 +8,10 @@ use actix_cors::Cors;
 use actix_web::web::Data;
 use actix_web::{App, HttpServer};
 use sea_orm::{Database, DbErr};
+use sea_orm_migration::MigratorTrait;
 use crate::login::login_request::{link_account, log_out, user_login, user_signup, verify_email};
-use crate::requests::get_requests::{get_home_page, get_duels_game};
+use crate::migrator::Migrator;
+use crate::requests::get_requests::get_home_page;
 use crate::requests::import_games::import_recent_games;
 use crate::requests::insertion_requests::{insert_duels_game, insert_solo_game};
 
@@ -27,13 +29,14 @@ async fn main() -> std::io::Result<()> {
             std::process::exit(1);
         });
     
+    Migrator::refresh(&db).await.unwrap();
+    
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())
             .app_data(Data::new(db.clone()))
             .service(insert_duels_game)
             .service(insert_solo_game)
-            .service(get_duels_game)
             .service(get_home_page)
             .service(user_login)
             .service(user_signup)

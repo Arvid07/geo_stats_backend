@@ -22,7 +22,6 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(SoloRound::GameId).string().not_null())
-                    .col(ColumnDef::new(SoloRound::GuessId).string().not_null())
                     .col(ColumnDef::new(SoloRound::LocationId).string().not_null())
                     .col(ColumnDef::new(SoloRound::RoundNumber).integer().not_null())
                     .to_owned(),
@@ -42,7 +41,6 @@ pub enum SoloRound {
     Table,
     Id,
     GameId,
-    GuessId,
     LocationId,
     RoundNumber
 }
