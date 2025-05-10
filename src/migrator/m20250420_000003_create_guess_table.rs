@@ -29,9 +29,11 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Guess::Score).integer().not_null())
                     .col(ColumnDef::new(Guess::Time).integer())
                     .col(ColumnDef::new(Guess::Distance).double().not_null())
+                    .col(ColumnDef::new(Guess::CountryCode).string())
+                    .col(ColumnDef::new(Guess::SubdivisionCode).string())
                     .col(ColumnDef::new(Guess::RoundCountryCode).string().not_null())
                     .col(ColumnDef::new(Guess::IsTeamsBest).boolean().not_null())
-                    .to_owned(),
+                    .to_owned()
             )
             .await
     }
@@ -55,6 +57,8 @@ pub enum Guess {
     Score,
     Time,
     Distance,
+    CountryCode,
+    SubdivisionCode,
     RoundCountryCode,
     IsTeamsBest
 }

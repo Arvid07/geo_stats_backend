@@ -27,6 +27,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Location::Pitch).double().not_null())
                     .col(ColumnDef::new(Location::Zoom).double().not_null())
                     .col(ColumnDef::new(Location::CountryCode).string().not_null())
+                    .col(ColumnDef::new(Location::SubdivisionCode).string())
                     .to_owned(),
             )
             .await
@@ -48,5 +49,6 @@ pub enum Location {
     Heading,
     Pitch,
     Zoom,
-    CountryCode
+    CountryCode,
+    SubdivisionCode
 }

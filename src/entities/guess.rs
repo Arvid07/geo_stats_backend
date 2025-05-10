@@ -18,6 +18,8 @@ pub struct Model {
     pub time: Option<i32>,
     #[sea_orm(column_type = "Double")]
     pub distance: f64,
+    pub country_code: Option<String>,
+    pub subdivision_code: Option<String>,
     pub round_country_code: String,
     pub is_teams_best: bool,
 }

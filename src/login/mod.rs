@@ -1,9 +1,9 @@
-use actix_web::Error;
+use crate::entities::prelude::{Session, User};
+use crate::entities::user::Model as UserModel;
 use actix_web::error::{ErrorBadRequest, ErrorConflict, ErrorGone, ErrorInternalServerError};
+use actix_web::Error;
 use chrono::{DateTime, Utc};
 use sea_orm::{DatabaseConnection, EntityTrait, ModelTrait};
-use crate::entities::prelude::{Session, User};
-use crate::entities::user::{Model as UserModel, Model};
 
 pub mod login_request;
 mod email;

@@ -22,10 +22,7 @@ impl MigrationTrait for Migration {
                             .primary_key()
                     )
                     .col(ColumnDef::new(Map::Name).string().not_null())
-                    .col(ColumnDef::new(Map::Lat1).double().not_null())
-                    .col(ColumnDef::new(Map::Lng1).double().not_null())
-                    .col(ColumnDef::new(Map::Lat2).double().not_null())
-                    .col(ColumnDef::new(Map::Lng2).double().not_null())
+                    .col(ColumnDef::new(Map::MaxDistance).integer().not_null())
                     .to_owned(),
             )
             .await
@@ -43,8 +40,5 @@ pub enum Map {
     Table,
     Id,
     Name,
-    Lat1,
-    Lng1,
-    Lat2,
-    Lng2
+    MaxDistance
 }

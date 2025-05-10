@@ -18,6 +18,7 @@ pub struct Model {
     #[sea_orm(column_type = "Double")]
     pub zoom: f64,
     pub country_code: String,
+    pub subdivision_code: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
