@@ -50,9 +50,7 @@ async fn insert_games(
         &mut game_ids
             .iter()
             .take(REQUEST_CHUNK_SIZE)
-            .map(|game_id| {
-                get_game_data_if_not_exists(game_id.as_str(), client, cookies.clone(), db)
-            })
+            .map(|game_id| get_game_data_if_not_exists(game_id.as_str(), client, cookies.clone(), db))
             .collect(),
     );
 

@@ -1,4 +1,6 @@
 use std::cmp::max;
+use std::collections::HashSet;
+use std::fs::File;
 use crate::entities::duels_game::ActiveModel as DuelsGameModel;
 use crate::entities::duels_round::ActiveModel as DuelsRoundModel;
 use crate::entities::guess::ActiveModel as GuessModel;
@@ -10,9 +12,9 @@ use crate::entities::map::ActiveModel as MapModel;
 use actix_web::Error;
 use actix_web::error::{ErrorBadRequest, ErrorInternalServerError, ErrorNotFound};
 use chrono::{DateTime, Utc};
-use country_boundaries::{CountryBoundaries, LatLon, BOUNDARIES_ODBL_360X180};
+use country_boundaries::{CountryBoundaries, LatLon};
 use lazy_static::lazy_static;
-use log::{error, info};
+use log::{debug, error, info};
 use reqwest::Client;
 use reqwest::header::COOKIE;
 use sea_orm::{sea_query, ActiveValue, DatabaseConnection, DbErr, EntityTrait, TransactionTrait};
@@ -28,7 +30,28 @@ pub mod geo_login;
 pub mod import_games;
 
 lazy_static! {
-    static ref BOUNDARIES: CountryBoundaries = CountryBoundaries::from_reader(BOUNDARIES_ODBL_360X180).expect("failed to load country boundaries");
+    static ref COUNTRY_BOUNDARIES: CountryBoundaries = CountryBoundaries::from_reader(
+        File::open("world.ser")
+        .expect("failed to open world.ser")
+    ).expect("failed to load country boundaries");
+    
+    static ref STATE_BOUNDARIES: CountryBoundaries = CountryBoundaries::from_reader(
+        File::open("states.ser")
+        .expect("failed to open states.ser")
+    ).expect("failed to load country boundaries");
+    
+    static ref PRIORITY_COUNTRIES: HashSet<String> = [
+        String::from("CU"), 
+        String::from("DO"),
+        String::from("PR"), 
+        String::from("VI"), 
+        String::from("GU"), 
+        String::from("MP"),
+        String::from("HK"),
+        String::from("CX"), 
+        String::from("ST"), 
+        String::from("SJ")
+    ].into_iter().collect();
 }
 
 pub struct GamesData {
@@ -39,7 +62,7 @@ pub struct GamesData {
     pub players: Vec<PlayerModel>,
     pub comp_teams: Vec<CompTeamModel>,
     pub fun_teams: Vec<FunTeamModel>,
-    pub maps: Vec<MapModel>,
+    pub maps: Vec<MapModel>
 }
 
 pub struct GameData {
@@ -50,7 +73,7 @@ pub struct GameData {
     pub players: Vec<PlayerModel>,
     pub comp_teams: Vec<CompTeamModel>,
     pub fun_teams: Vec<FunTeamModel>,
-    pub map: MapModel,
+    pub map: MapModel
 }
 
 pub async fn create_new_comp_team(
@@ -58,7 +81,7 @@ pub async fn create_new_comp_team(
     player_id1: &String,
     player_id2: &String,
     team_progress: &RankedTeamDuelsProgress,
-    client: &Client,
+    client: &Client
 ) -> Result<comp_team::ActiveModel, Error> {
     let ranked_team_request_url = format!(
         "https://www.geoguessr.com/api/v4/ranked-team-duels/teams/?userId={}&userId={}",
@@ -79,7 +102,7 @@ pub async fn create_new_comp_team(
         player_id1: ActiveValue::Set(player_id1.clone()),
         player_id2: ActiveValue::Set(player_id2.clone()),
         name: ActiveValue::Set(team_response.team_name),
-        rating: ActiveValue::Set(team_progress.rating_after),
+        rating: ActiveValue::Set(team_progress.rating_after)
     };
 
     Ok(team)
@@ -88,7 +111,7 @@ pub async fn create_new_comp_team(
 async fn create_fun_team_if_not_exists(
     team_id: String,
     player_ids: Vec<String>,
-    db: &DatabaseConnection,
+    db: &DatabaseConnection
 ) -> Result<Option<crate::entities::fun_team::ActiveModel>, Error> {
     let team_result = FunTeam::find_by_id(team_id.clone()).one(db).await;
 
@@ -99,14 +122,12 @@ async fn create_fun_team_if_not_exists(
 
         let team = crate::entities::fun_team::ActiveModel {
             team_id: ActiveValue::Set(team_id),
-            player_ids: ActiveValue::Set(player_ids),
+            player_ids: ActiveValue::Set(player_ids)
         };
 
         Ok(Some(team))
     } else {
-        Err(ErrorInternalServerError(
-            "Database operation get_fun_team failed!",
-        ))
+        Err(ErrorInternalServerError("Database operation get_fun_team failed!"))
     }
 }
 
@@ -114,7 +135,7 @@ async fn insert_fun_team_duels_game_model(
     game: &crate::geo_guessr::DuelsGame,
     game_mode: &TeamGameMode,
     geo_mode: &GeoMode,
-    db: &DatabaseConnection,
+    db: &DatabaseConnection
 ) -> Result<(crate::entities::duels_game::ActiveModel, Vec<crate::entities::fun_team::ActiveModel>), Error> {
     let team_id1 = game.teams[0].id.clone();
     let team_id2 = game.teams[1].id.clone();
@@ -127,7 +148,7 @@ async fn insert_fun_team_duels_game_model(
             .iter()
             .map(|player| player.player_id.clone())
             .collect(),
-        db,
+        db
     )
         .await? {
         teams.push(team);
@@ -140,7 +161,7 @@ async fn insert_fun_team_duels_game_model(
             .iter()
             .map(|player| player.player_id.clone())
             .collect(),
-        db,
+        db
     )
         .await? {
         teams.push(team);
@@ -201,11 +222,11 @@ async fn insert_comp_team_duels_game_model(
 
     if let (Some(progress1), Some(progress2)) = (
         &game.teams[1].players[0].progress_change,
-        &game.teams[0].players[0].progress_change,
+        &game.teams[0].players[0].progress_change
     ) {
         if let (Some(ranked_team_progress1), Some(ranked_team_progress2)) = (
             &progress1.ranked_team_duels_progress,
-            &progress2.ranked_team_duels_progress,
+            &progress2.ranked_team_duels_progress
         ) {
             rating_before_team1 = ranked_team_progress1.rating_before;
             rating_before_team2 = ranked_team_progress2.rating_before;
@@ -219,7 +240,7 @@ async fn insert_comp_team_duels_game_model(
         team_id1,
         team_id2,
         rating_before_team1,
-        rating_before_team2,
+        rating_before_team2
     );
 
     Ok((game_model, teams))
@@ -245,7 +266,7 @@ fn get_team_duels_game_model(
         start_time: ActiveValue::Set(game.rounds[0].start_time.clone().unwrap()),
         map_id: ActiveValue::Set(game.options.map.slug.clone()),
         rating_before_team1: ActiveValue::Set(rating_before_team1),
-        rating_before_team2: ActiveValue::Set(rating_before_team2),
+        rating_before_team2: ActiveValue::Set(rating_before_team2)
     }
 }
 
@@ -284,7 +305,7 @@ async fn get_duels_game_model(
         start_time: ActiveValue::Set(game.rounds[0].start_time.clone().unwrap()),
         map_id: ActiveValue::Set(game.options.map.slug.clone()),
         rating_before_team1: ActiveValue::Set(rating_before_team1),
-        rating_before_team2: ActiveValue::Set(rating_before_team2),
+        rating_before_team2: ActiveValue::Set(rating_before_team2)
     }
 }
 
@@ -311,42 +332,42 @@ fn get_geo_mode(movement_options: &MovementOption) -> GeoMode {
         MovementOption {
             forbid_moving: false,
             forbid_zooming: false,
-            forbid_rotating: false,
+            forbid_rotating: false
         } => Moving,
         MovementOption {
             forbid_moving: false,
             forbid_zooming: false,
-            forbid_rotating: true,
+            forbid_rotating: true
         } => NoPanning,
         MovementOption {
             forbid_moving: false,
             forbid_zooming: true,
-            forbid_rotating: false,
+            forbid_rotating: false
         } => NoZooming,
         MovementOption {
             forbid_moving: false,
             forbid_zooming: true,
-            forbid_rotating: true,
+            forbid_rotating: true
         } => NoPanningZooming,
         MovementOption {
             forbid_moving: true,
             forbid_zooming: false,
-            forbid_rotating: false,
+            forbid_rotating: false
         } => NoMove,
         MovementOption {
             forbid_moving: true,
             forbid_zooming: false,
-            forbid_rotating: true,
+            forbid_rotating: true
         } => NoPanningMoving,
         MovementOption {
             forbid_moving: true,
             forbid_zooming: true,
-            forbid_rotating: false,
+            forbid_rotating: false
         } => NoMovingZooming,
         MovementOption {
             forbid_moving: true,
             forbid_zooming: true,
-            forbid_rotating: true,
+            forbid_rotating: true
         } => NMPZ,
     }
 }
@@ -393,7 +414,7 @@ pub async fn create_new_player_model(
         game_mode_ratings = GameModeRatings {
             standard_duels: None,
             no_move_duels: None,
-            nmpz_duels: None,
+            nmpz_duels: None
         }
     } else {
         let player_ratings = player_ratings_option.unwrap();
@@ -405,7 +426,7 @@ pub async fn create_new_player_model(
             game_mode_ratings = GameModeRatings {
                 standard_duels: None,
                 no_move_duels: None,
-                nmpz_duels: None,
+                nmpz_duels: None
             }
         }
     }
@@ -421,7 +442,7 @@ pub async fn create_new_player_model(
         avatar_pin: ActiveValue::Set(player_response.pin.url),
         level: ActiveValue::Set(player_response.br.level),
         is_pro_user: ActiveValue::Set(player_response.is_pro_user),
-        is_creator: ActiveValue::Set(player_response.is_creator),
+        is_creator: ActiveValue::Set(player_response.is_creator)
     };
 
     Ok(player)
@@ -435,11 +456,11 @@ async fn get_player_model(
     if let Ok(player_option) = Player::find_by_id(player_id).one(db).await {
         match player_option {
             Some(_) => Ok(Ok(create_new_player_model(player_id, client).await?)),
-            None => Ok(Err(create_new_player_model(player_id, client).await?)),
+            None => Ok(Err(create_new_player_model(player_id, client).await?))
         }
     } else {
         Err(ErrorInternalServerError(
-            "Database operation get_player failed!",
+            "Database operation get_player failed!"
         ))
     }
 }
@@ -468,7 +489,7 @@ async fn insert_game_into_db(game_data: GameData, db: &DatabaseConnection) -> Re
         players: game_data.players,
         comp_teams: game_data.comp_teams,
         fun_teams: game_data.fun_teams,
-        maps: vec![game_data.map],
+        maps: vec![game_data.map]
     };
     
     insert_games_into_db(games_data, db).await
@@ -571,10 +592,7 @@ pub async fn get_game_data(
     let mut fun_teams = Vec::new();
 
     let game = client
-        .get(format!(
-            "https://game-server.geoguessr.com/api/duels/{}",
-            game_id
-        ))
+        .get(format!("https://game-server.geoguessr.com/api/duels/{}", game_id))
         .header(COOKIE, cookies)
         .send()
         .await
@@ -598,7 +616,7 @@ pub async fn get_game_data(
         for player in team.players.iter() {
             match create_new_player_model(&player.player_id, client).await {
                 Ok(new_player) => players.push(new_player),
-                Err(internal_server_error) => return Err(internal_server_error),
+                Err(internal_server_error) => return Err(internal_server_error)
             }
         }
     }
@@ -616,7 +634,7 @@ pub async fn get_game_data(
                     duels_game = duels_game_model;
                     comp_teams = teams;
                 }
-                Err(error) => return Err(error),
+                Err(error) => return Err(error)
             };
         }
         TeamGameMode::TeamDuels | TeamGameMode::TeamFun => {
@@ -625,7 +643,7 @@ pub async fn get_game_data(
                     duels_game = duels_game_model;
                     fun_teams = team_models;
                 }
-                Err(error) => return Err(error),
+                Err(error) => return Err(error)
             }
         }
     }
@@ -641,19 +659,9 @@ pub async fn get_game_data(
         let panorama = &round.panorama;
         let round_id = Uuid::new_v4().to_string();
 
-        let codes = BOUNDARIES.ids(LatLon::new(panorama.lat, panorama.lng).unwrap());
-        let mut subdivision_code = None;
-
-        let mut longest_code_len = 0;
-        for code in codes {
-            if code.len() > 2 && code.len() > longest_code_len {
-                subdivision_code = Some(String::from(code));
-            }
-
-            longest_code_len = max(code.len(), longest_code_len);
-        }
-
-
+        let subdivision_codes = STATE_BOUNDARIES.ids(LatLon::new(panorama.lat, panorama.lng).unwrap());
+        let subdivision_code = subdivision_codes.into_iter().next().map(String::from);
+        
         let location = crate::entities::location::ActiveModel {
             id: ActiveValue::Set(panorama.pano_id.clone()),
             lat: ActiveValue::Set(panorama.lat),
@@ -662,7 +670,7 @@ pub async fn get_game_data(
             pitch: ActiveValue::Set(panorama.pitch),
             zoom: ActiveValue::Set(panorama.zoom),
             country_code: ActiveValue::Set(panorama.country_code.clone()),
-            subdivision_code: ActiveValue::Set(subdivision_code),
+            subdivision_code: ActiveValue::Set(subdivision_code)
         };
 
         locations.push(location);
@@ -703,22 +711,20 @@ pub async fn get_game_data(
 
                         (5000_f64 * std::f64::consts::E.powf(-10_f64 * (geo_guess.distance / max_distance))) as i32
                     });
-                    
-                    let codes = BOUNDARIES.ids(LatLon::new(geo_guess.lat, geo_guess.lng).unwrap());
-                    let mut country_code = None;
-                    let mut subdivision_code = None;
-                    
-                    let mut longest_code_len = 0;
-                    for code in codes {
-                        if code.len() == 2 {
-                            country_code = Some(String::from(code));
-                        } else if code.len() > longest_code_len {
-                            subdivision_code = Some(String::from(code));
-                        }
-                        
-                        longest_code_len = max(code.len(), longest_code_len);
-                    }
 
+                    let subdivision_codes = STATE_BOUNDARIES.ids(LatLon::new(geo_guess.lat, geo_guess.lng).unwrap());
+                    let subdivision_code = subdivision_codes.clone().into_iter().next().map(String::from); // remove clone later 
+                    
+                    let mut codes = COUNTRY_BOUNDARIES.ids(LatLon::new(geo_guess.lat, geo_guess.lng).unwrap());
+                    let mut country_code = codes.pop().map(String::from);
+
+                    for code in codes {
+                        if PRIORITY_COUNTRIES.contains(code) {
+                            country_code = Some(String::from(code));
+                            break;
+                        }
+                    }
+                    
                     let guess = GuessModel {
                         id: ActiveValue::Set(Uuid::new_v4().to_string()),
                         game_id: ActiveValue::Set(String::from(game_id)),
@@ -745,7 +751,7 @@ pub async fn get_game_data(
             game_id: ActiveValue::Set(game.game_id.clone()),
             location_id: ActiveValue::Set(panorama.pano_id.clone()),
             round_number: ActiveValue::Set(round_number as i32),
-            damage_multiplier: ActiveValue::Set(round.damage_multiplier),
+            damage_multiplier: ActiveValue::Set(round.damage_multiplier)
         };
 
         rounds.push(round);
@@ -754,6 +760,10 @@ pub async fn get_game_data(
     let map = MapModel {
         id: ActiveValue::Set(game.options.map.slug.clone()),
         name: ActiveValue::Set(game.options.map.name.clone()),
+        lat1: ActiveValue::Set(game.map_bounds.min.lat),
+        lng1: ActiveValue::Set(game.map_bounds.min.lng),
+        lat2: ActiveValue::Set(game.map_bounds.max.lat),
+        lng2: ActiveValue::Set(game.map_bounds.max.lng),
         max_distance: ActiveValue::Set(game.options.map.max_error_distance)
     };
 
@@ -765,7 +775,7 @@ pub async fn get_game_data(
         players,
         comp_teams,
         fun_teams,
-        map,
+        map
     };
 
     Ok(game_data)

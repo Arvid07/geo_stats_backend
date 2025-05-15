@@ -1,4 +1,6 @@
 use std::fmt;
+use std::fmt::Error;
+use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
@@ -20,6 +22,21 @@ pub enum TeamGameMode {
     TeamDuels,
     TeamDuelsRanked,
     TeamFun
+}
+
+impl FromStr for TeamGameMode {
+    type Err = Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "Duels" => Ok(TeamGameMode::Duels),
+            "DuelsRanked" => Ok(TeamGameMode::DuelsRanked),
+            "TeamDuels" => Ok(TeamGameMode::TeamDuels),
+            "TeamDuelsRanked" => Ok(TeamGameMode::TeamDuelsRanked),
+            "TeamFun" => Ok(TeamGameMode::TeamFun),
+            _ => Err(Error)
+        }
+    }
 }
 
 impl fmt::Display for GeoMode {

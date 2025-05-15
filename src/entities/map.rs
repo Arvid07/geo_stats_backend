@@ -2,12 +2,20 @@
 
 use sea_orm::entity::prelude::*;
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
+#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "map")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: String,
     pub name: String,
+    #[sea_orm(column_type = "Double")]
+    pub lat1: f64,
+    #[sea_orm(column_type = "Double")]
+    pub lng1: f64,
+    #[sea_orm(column_type = "Double")]
+    pub lat2: f64,
+    #[sea_orm(column_type = "Double")]
+    pub lng2: f64,
     pub max_distance: i32,
 }
 

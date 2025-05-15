@@ -1,4 +1,3 @@
-use std::cmp::max;
 use crate::entities::guess::ActiveModel as GuessModel;
 use crate::entities::location::ActiveModel as LocationModel;
 use crate::entities::map::ActiveModel as MapModel;
@@ -6,7 +5,7 @@ use crate::entities::prelude::{Guess, Location, Map, Player, SoloGame, SoloRound
 use crate::entities::solo_game::ActiveModel as SoloGameModel;
 use crate::entities::solo_round::ActiveModel as SoloRoundModel;
 use crate::geo_guessr::MovementOption;
-use crate::requests::{geo_login, get_game_data, get_geo_mode, get_player_model, insert_game_into_db, BOUNDARIES};
+use crate::requests::{geo_login, get_game_data, get_geo_mode, get_player_model, insert_game_into_db, COUNTRY_BOUNDARIES, PRIORITY_COUNTRIES, STATE_BOUNDARIES};
 use actix_web::error::{ErrorBadRequest, ErrorInternalServerError};
 use actix_web::{post, web, Error, HttpResponse, Responder};
 use country_boundaries::LatLon;
@@ -76,20 +75,18 @@ async fn insert_solo_game(
     for (round_number, round) in game.rounds.iter().enumerate() {
         let guess_id = Uuid::new_v4().to_string();
         let round_id = Uuid::new_v4().to_string();
-        
-        let codes = BOUNDARIES.ids(LatLon::new(game.player.guesses[round_number].lat, game.player.guesses[round_number].lng).unwrap());
-        let mut country_code = None;
-        let mut subdivision_code = None;
 
-        let mut longest_code_len = 0;
+        let subdivision_codes = STATE_BOUNDARIES.ids(LatLon::new(round.lat, round.lng).unwrap());
+        let subdivision_code = subdivision_codes.into_iter().next().map(String::from);
+
+        let mut codes = COUNTRY_BOUNDARIES.ids(LatLon::new(game.player.guesses[round_number].lat, game.player.guesses[round_number].lng).unwrap());
+        let mut country_code = codes.pop().map(String::from);
+
         for code in codes {
-            if code.len() == 2 {
+            if PRIORITY_COUNTRIES.contains(code) {
                 country_code = Some(String::from(code));
-            } else if code.len() > longest_code_len {
-                subdivision_code = Some(String::from(code));
+                break;
             }
-
-            longest_code_len = max(code.len(), longest_code_len);
         }
 
         let location = LocationModel {
@@ -100,7 +97,7 @@ async fn insert_solo_game(
             pitch: ActiveValue::Set(round.pitch),
             zoom: ActiveValue::Set(round.zoom),
             country_code: ActiveValue::Set(round.streak_location_code.clone()),
-            subdivision_code: ActiveValue::Set(subdivision_code.clone()),
+            subdivision_code: ActiveValue::Set(subdivision_code.clone())
         };
 
         locations.push(location);
@@ -149,6 +146,10 @@ async fn insert_solo_game(
     let map = MapModel {
         id: ActiveValue::Set(game.map.clone()),
         name: ActiveValue::Set(game.map_name.clone()),
+        lat1: ActiveValue::Set(game.bounds.min.lat),
+        lng1: ActiveValue::Set(game.bounds.min.lng),
+        lat2: ActiveValue::Set(game.bounds.max.lat),
+        lng2: ActiveValue::Set(game.bounds.max.lng),
         max_distance: ActiveValue::Set(distance_meters as i32),
     };
 
