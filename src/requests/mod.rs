@@ -1,4 +1,3 @@
-use std::cmp::max;
 use std::collections::HashSet;
 use std::fs::File;
 use crate::entities::duels_game::ActiveModel as DuelsGameModel;
@@ -76,8 +75,12 @@ pub struct GameData {
     pub map: MapModel
 }
 
+fn get_team_id(mut player_ids: Vec<&str>) -> String {
+    player_ids.sort_unstable();
+    player_ids.join("-")
+}
+
 pub async fn create_new_comp_team(
-    team_id: &str,
     player_id1: &String,
     player_id2: &String,
     team_progress: &RankedTeamDuelsProgress,
@@ -98,7 +101,7 @@ pub async fn create_new_comp_team(
         .map_err(|_| ErrorInternalServerError("Could not pass Json to Ranked Team"))?;
 
     let team = comp_team::ActiveModel {
-        team_id: ActiveValue::Set(String::from(team_id)),
+        team_id: ActiveValue::Set(get_team_id(vec![player_id1, player_id2])),
         player_id1: ActiveValue::Set(player_id1.clone()),
         player_id2: ActiveValue::Set(player_id2.clone()),
         name: ActiveValue::Set(team_response.team_name),
@@ -137,8 +140,8 @@ async fn insert_fun_team_duels_game_model(
     geo_mode: &GeoMode,
     db: &DatabaseConnection
 ) -> Result<(crate::entities::duels_game::ActiveModel, Vec<crate::entities::fun_team::ActiveModel>), Error> {
-    let team_id1 = game.teams[0].id.clone();
-    let team_id2 = game.teams[1].id.clone();
+    let team_id1 = get_team_id(game.teams[0].players.iter().map(|player| player.player_id.as_str()).collect());
+    let team_id2 = get_team_id(game.teams[1].players.iter().map(|player| player.player_id.as_str()).collect());
     let mut teams = Vec::new();
 
     if let Some(team) = create_fun_team_if_not_exists(
@@ -179,13 +182,12 @@ async fn insert_comp_team_duels_game_model(
     geo_mode: &GeoMode,
     client: &Client,
 ) -> Result<(crate::entities::duels_game::ActiveModel, Vec<comp_team::ActiveModel>), Error> {
-    let team_id1 = game.teams[0].id.clone();
-    let team_id2 = game.teams[1].id.clone();
+    let team_id1 = get_team_id(game.teams[0].players.iter().map(|player| player.player_id.as_str()).collect());
+    let team_id2 = get_team_id(game.teams[1].players.iter().map(|player| player.player_id.as_str()).collect());
     let mut teams = Vec::new();
 
     teams.push(
         create_new_comp_team(
-            &team_id1,
             &game.teams[0].players[0].player_id,
             &game.teams[0].players[1].player_id,
             game.teams[0].players[0]
@@ -202,7 +204,6 @@ async fn insert_comp_team_duels_game_model(
 
     teams.push(
         create_new_comp_team(
-            &team_id2,
             &game.teams[1].players[0].player_id,
             &game.teams[1].players[1].player_id,
             game.teams[1].players[0]
@@ -294,7 +295,7 @@ async fn get_duels_game_model(
         }
     }
 
-    crate::entities::duels_game::ActiveModel {
+    DuelsGameModel {
         id: ActiveValue::Set(game.game_id.clone()),
         team_id1: ActiveValue::Set(players_team1[0].player_id.clone()),
         team_id2: ActiveValue::Set(players_team2[0].player_id.clone()),
@@ -540,6 +541,7 @@ async fn insert_games_into_db(games_data: GamesData, db: &DatabaseConnection) ->
             }
             if !games_data.fun_teams.is_empty() {
                 FunTeam::insert_many(games_data.fun_teams)
+                    .on_conflict_do_nothing()
                     .exec(txn)
                     .await?;
             }
@@ -596,7 +598,7 @@ pub async fn get_game_data(
         .header(COOKIE, cookies)
         .send()
         .await
-        .map_err(|_| ErrorInternalServerError("Fetch Game operation failed!"))?
+        .map_err(|err| ErrorInternalServerError(format!("Fetch Game operation failed! Error: {}", err)))?
         .json::<crate::geo_guessr::DuelsGame>()
         .await
         .map_err(|_| ErrorBadRequest(format!("Could not find Game with id: {}!", game_id)))?;
@@ -604,7 +606,7 @@ pub async fn get_game_data(
     if game.status.as_str() != "Finished" {
         return Err(ErrorBadRequest("Game has not finished yet!"));
     }
-
+    
     let game_mode = get_game_mode(
         game.teams[0].players.len(),
         game.teams[1].players.len(),
@@ -678,7 +680,7 @@ pub async fn get_game_data(
         let start_time_option = &round.start_time;
         let round_starting_date: DateTime<Utc> = start_time_option.clone().unwrap().parse().unwrap();
 
-        for (i, team) in game.teams.iter().enumerate() {
+        for team in game.teams.iter() {
             for player in team.players.iter() {
                 let geo_guess_option = player
                     .guesses
@@ -690,9 +692,11 @@ pub async fn get_game_data(
 
                     let team_id = match &game_mode {
                         TeamGameMode::Duels | TeamGameMode::DuelsRanked => player.player_id.clone(),
-                        TeamGameMode::TeamDuels | TeamGameMode::TeamDuelsRanked | TeamGameMode::TeamFun => game.teams[i].id.clone()
+                        TeamGameMode::TeamDuels | TeamGameMode::TeamDuelsRanked | TeamGameMode::TeamFun => {
+                            get_team_id(team.players.iter().map(|player| player.player_id.as_str()).collect())
+                        }
                     };
-                    
+
                     let score = geo_guess.score.unwrap_or_else(|| {
                         let max_distance = max_distance_option.unwrap_or_else(|| {
                             let a = geoutils::Location::new(
@@ -734,6 +738,7 @@ pub async fn get_game_data(
                         lng: ActiveValue::Set(geo_guess.lng),
                         score: ActiveValue::Set(score),
                         time: ActiveValue::Set(Some((guess_date - round_starting_date).num_seconds() as i32)),
+                        date: ActiveValue::Set(guess_date.to_string()),
                         distance: ActiveValue::Set(geo_guess.distance),
                         country_code: ActiveValue::Set(country_code),
                         subdivision_code: ActiveValue::Set(subdivision_code),

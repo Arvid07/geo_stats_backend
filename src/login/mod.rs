@@ -1,5 +1,6 @@
-use crate::entities::prelude::{Session, User};
+use crate::entities::prelude::{Session, User, Player};
 use crate::entities::user::Model as UserModel;
+use crate::entities::player::Model as PlayerModel;
 use actix_web::error::{ErrorBadRequest, ErrorConflict, ErrorGone, ErrorInternalServerError};
 use actix_web::Error;
 use chrono::{DateTime, Utc};
@@ -30,6 +31,30 @@ pub async fn get_user_from_session(session_id: &str, db: &DatabaseConnection) ->
                             Ok(user)
                         },
                         None => Err(ErrorInternalServerError("Can not find user from sessionId"))
+                    }
+                },
+                None => Err(ErrorBadRequest("Session does not exist!"))
+            }
+        },
+        Err(err) => Err(ErrorInternalServerError(err.to_string()))
+    }
+}
+
+pub async fn get_player_from_session(session_id: &str, db: &DatabaseConnection) -> Result<PlayerModel, Error> {
+    match Session::find_by_id(session_id).find_also_related(User).and_also_related(Player).one(db).await {
+        Ok(session_option) => {
+            match session_option {
+                Some((session, _, player_option)) => {
+                    if Utc::now() > session.expire_date.parse::<DateTime<Utc>>().unwrap() {
+                        let _ = session.delete(db).await;
+                        return Err(ErrorGone("Session expired!"));
+                    }
+
+                    match player_option {
+                        Some(player) => {
+                            Ok(player)
+                        },
+                        None => Err(ErrorConflict("Account is not linked!"))
                     }
                 },
                 None => Err(ErrorBadRequest("Session does not exist!"))

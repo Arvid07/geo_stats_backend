@@ -1,13 +1,15 @@
+use crate::entities::guess::Model as GuessModel;
 use crate::entities::player::Model as PlayerModel;
-use crate::entities::prelude::{DuelsGame, Guess, Player};
-use crate::entities::{duels_game, guess};
+use crate::entities::prelude::{CompTeam, DuelsGame, Guess};
+use crate::entities::{comp_team, duels_game};
 use crate::geo_guessr::TeamGameMode;
-use crate::login::get_player_id_from_session;
-use actix_web::error::{ErrorConflict, ErrorInternalServerError, ErrorUnauthorized};
+use crate::login::get_player_from_session;
+use actix_web::error::{ErrorInternalServerError, ErrorUnauthorized};
 use actix_web::{get, web, Error, HttpRequest, HttpResponse, Responder};
+use chrono::{DateTime, Utc};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
 #[derive(Serialize)]
@@ -21,111 +23,102 @@ struct HomePageResponse {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Stats {
-    duels: HashMap<String, CountryStats>,
-    duels_ranked: HashMap<String, CountryStats>,
-    team_duels: HashMap<String, CountryStats>,
-    team_duels_ranked: HashMap<String, CountryStats>,
-    team_fun: HashMap<String, CountryStats>
+    duels: Vec<StatsGuess>,
+    duels_ranked: Vec<StatsGuess>,
+    team_duels: Vec<StatsGuess>,
+    team_duels_ranked: Vec<StatsGuess>,
+    team_fun: Vec<StatsGuess>
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct CountryStats {
-    points: usize,
-    count: usize
+struct StatsGuess {
+    time: i64,
+    country_code: String,
+    points: usize
 }
 
 struct Score {
     guess_id: String,
+    date: String,
     country_code: String,
     score: usize
 }
 
-async fn get_stats(db: &DatabaseConnection, guess_ids: Vec<String>, guess_id_to_game_mode: &HashMap<String, String>, error_message: String) -> Result<Stats, Error> {
-    let guesses = match Guess::find().filter(guess::Column::Id.is_in(guess_ids)).all(db).await {
-        Ok(guesses_found) => {
-            if guesses_found.is_empty() {
-                return Err(ErrorInternalServerError(error_message));
-            }
-            guesses_found
-        }
-        Err(err) => return Err(ErrorInternalServerError(err.to_string()))
-    };
-
+async fn get_stats(guesses: Vec<GuessModel>, guess_id_to_game_mode: &HashMap<String, String>) -> Result<Stats, Error> {
     let mut scores = Vec::with_capacity(guesses.len());
 
     for guess in guesses {
         scores.push(
             Score {
                 guess_id: guess.id, 
-                country_code: 
-                guess.round_country_code,
+                date: guess.date,
+                country_code: guess.round_country_code,
                 score: guess.score as usize
             });
     }
 
-    let mut duels_score = HashMap::new();
-    let mut duels_ranked = HashMap::new();
-    let mut team_duels = HashMap::new();
-    let mut team_duels_ranked = HashMap::new();
-    let mut team_fun = HashMap::new();
+    let mut duels = Vec::new();
+    let mut duels_ranked = Vec::new();
+    let mut team_duels = Vec::new();
+    let mut team_duels_ranked = Vec::new();
+    let mut team_fun = Vec::new();
 
     for score in scores {
+        let date: DateTime<Utc> = score.date.parse().unwrap();
+        let time = date.timestamp_millis();
+        
         match TeamGameMode::from_str(guess_id_to_game_mode.get(&score.guess_id).unwrap()).unwrap() {
             TeamGameMode::Duels => {
-                duels_score.entry(score.country_code).and_modify(|entry: &mut (usize, usize)| {
-                    entry.0 += score.score;
-                    entry.1 += 1;
-                }).or_insert((score.score, 1));
+                duels.push(StatsGuess {
+                    time,
+                    country_code: score.country_code,
+                    points: score.score
+                });
             }
             TeamGameMode::DuelsRanked => {
-                duels_ranked.entry(score.country_code).and_modify(|entry: &mut (usize, usize)| {
-                    entry.0 += score.score;
-                    entry.1 += 1;
-                }).or_insert((score.score, 1));
+                duels_ranked.push(StatsGuess {
+                    time,
+                    country_code: score.country_code,
+                    points: score.score
+                });
             }
             TeamGameMode::TeamDuels => {
-                team_duels.entry(score.country_code).and_modify(|entry: &mut (usize, usize)| {
-                    entry.0 += score.score;
-                    entry.1 += 1;
-                }).or_insert((score.score, 1));            
+                team_duels.push(StatsGuess {
+                    time,
+                    country_code: score.country_code,
+                    points: score.score
+                });      
             }
             TeamGameMode::TeamDuelsRanked => {
-                team_duels_ranked.entry(score.country_code).and_modify(|entry: &mut (usize, usize)| {
-                    entry.0 += score.score;
-                    entry.1 += 1;
-                }).or_insert((score.score, 1));
+                team_duels_ranked.push(StatsGuess {
+                    time,
+                    country_code: score.country_code,
+                    points: score.score
+                });
             }
             TeamGameMode::TeamFun => {
-                team_fun.entry(score.country_code).and_modify(|entry: &mut (usize, usize)| {
-                    entry.0 += score.score;
-                    entry.1 += 1;
-                }).or_insert((score.score, 1));
+                team_fun.push(StatsGuess {
+                    time,
+                    country_code: score.country_code,
+                    points: score.score
+                });
             }
         }
     }
     
+    duels.sort_unstable_by(|a, b| b.time.cmp(&a.time));
+    duels_ranked.sort_unstable_by(|a, b| b.time.cmp(&a.time));
+    team_duels.sort_unstable_by(|a, b| b.time.cmp(&a.time));
+    team_duels_ranked.sort_unstable_by(|a, b| b.time.cmp(&a.time));
+    team_fun.sort_unstable_by(|a, b| b.time.cmp(&a.time));
+    
     let stats = Stats {
-        duels: duels_score
-            .into_iter()
-            .map(|(country_code, (points, amount))| (country_code, CountryStats { points, count: amount }))
-            .collect(),
-        duels_ranked: duels_ranked
-            .into_iter()
-            .map(|(country_code, (points, amount))| (country_code, CountryStats { points, count: amount }))
-            .collect(),
-        team_duels: team_duels
-            .into_iter()
-            .map(|(country_code, (points, amount))| (country_code, CountryStats { points, count: amount }))
-            .collect(),
-        team_duels_ranked: team_duels_ranked
-            .into_iter()
-            .map(|(country_code, (points, amount))| (country_code, CountryStats { points, count: amount }))
-            .collect(),
-        team_fun: team_fun
-            .into_iter()
-            .map(|(country_code, (points, amount))| (country_code, CountryStats { points, count: amount }))
-            .collect()
+        duels,
+        duels_ranked,
+        team_duels,
+        team_duels_ranked,
+        team_fun
     };
 
     Ok(stats)
@@ -144,22 +137,23 @@ pub async fn get_home_page(
     };
     
     let db = db.get_ref();
-    let player_id = get_player_id_from_session(&session_id, db).await?;
+    let player = get_player_from_session(&session_id, db).await?;
+    let mut team_ids: HashSet<String> = [player.id.clone()].into_iter().collect();
     
-    let player = match Player::find_by_id(&player_id).one(db).await {
-        Ok(player_option) => {
-            match player_option {
-                Some(player) => player,
-                None => return Err(ErrorConflict("Account is not linked correctly!"))
-            }
-        },
-        Err(err) => return Err(ErrorInternalServerError(err.to_string()))
+    match CompTeam::find()
+        .filter(comp_team::Column::PlayerId1.eq(&player.id).or(comp_team::Column::PlayerId2.eq(&player.id)))
+        .all(db)
+        .await 
+    {
+        Ok(teams) => team_ids.extend(teams.into_iter().map(|team| team.team_id)),
+        Err(err) => return Err(ErrorInternalServerError(err))
     };
-    
+
     let games_guesses = match DuelsGame::find()
-        .filter(duels_game::Column::TeamId1.eq(&player_id).or(duels_game::Column::TeamId2.eq(&player_id)))
+        .filter(duels_game::Column::TeamId1.is_in(&team_ids).or(duels_game::Column::TeamId2.is_in(&team_ids)))
         .find_with_related(Guess)
-        .all(db).await 
+        .all(db)
+        .await 
     {
         Ok(games_found) => {
             if games_found.is_empty() {
@@ -176,25 +170,25 @@ pub async fn get_home_page(
         Err(err) => return Err(ErrorInternalServerError(err.to_string()))
     };
     
-    let mut guess_ids = Vec::new();
-    let mut enemy_guess_ids = Vec::new();
-    let mut guess_id_to_game_mode = HashMap::with_capacity(guess_ids.len());
+    let mut player_guesses = Vec::new();
+    let mut enemy_guesses = Vec::new();
+    let mut guess_id_to_game_mode = HashMap::with_capacity(player_guesses.len());
     
     for (game, guesses) in games_guesses {
         for guess in guesses {
-            if guess.team_id == player_id {
-                guess_ids.push(guess.id.clone());
-                guess_id_to_game_mode.insert(guess.id, game.team_game_mode.clone());
+            if team_ids.contains(&guess.team_id) {
+                guess_id_to_game_mode.insert(guess.id.clone(), game.team_game_mode.clone());
+                player_guesses.push(guess);
             } else {
-                enemy_guess_ids.push(guess.id.clone());
-                guess_id_to_game_mode.insert(guess.id, game.team_game_mode.clone());
+                guess_id_to_game_mode.insert(guess.id.clone(), game.team_game_mode.clone());
+                enemy_guesses.push(guess);
             }
         }
     }
     
     let (stats, enemy_stats) = match tokio::try_join!(
-        get_stats(db, guess_ids, &guess_id_to_game_mode, format!("Could not find any guesses for player: {}", player_id)),
-        get_stats(db, enemy_guess_ids, &guess_id_to_game_mode, String::from("Could not find any enemy guesses"))
+        get_stats(player_guesses, &guess_id_to_game_mode),
+        get_stats(enemy_guesses, &guess_id_to_game_mode)
     ) {
         Ok((a, b)) => (a, b),
         Err(err) => return Err(ErrorInternalServerError(err))

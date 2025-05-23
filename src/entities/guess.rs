@@ -16,6 +16,7 @@ pub struct Model {
     pub lng: f64,
     pub score: i32,
     pub time: Option<i32>,
+    pub date: String,
     #[sea_orm(column_type = "Double")]
     pub distance: f64,
     pub country_code: Option<String>,

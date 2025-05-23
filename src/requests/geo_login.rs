@@ -5,6 +5,7 @@ use serde::Serialize;
 use std::error::Error;
 use std::fmt::Write as FmtWrite;
 use std::ops::Add;
+use log::error;
 use tokio::sync::Mutex;
 
 lazy_static! {
@@ -22,8 +23,13 @@ pub async fn get_cookies() -> String {
     let mut expire = COOKIE_EXPIRE_DATE.lock().await;
 
     if *expire < Utc::now() + Duration::seconds(15) {
-        let new_expire = login().await.expect("Geo login failed!");
-        *expire = new_expire;
+        match login().await {
+            Ok(new_expire) => *expire = new_expire,
+            Err(err) => {
+                error!("Geo guest login failed! Error: {}", err);
+                std::process::exit(1);
+            }
+        }
     }
     
     drop(expire);

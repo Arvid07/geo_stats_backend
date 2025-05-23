@@ -8,6 +8,7 @@ use crate::geo_guessr::MovementOption;
 use crate::requests::{geo_login, get_game_data, get_geo_mode, get_player_model, insert_game_into_db, COUNTRY_BOUNDARIES, PRIORITY_COUNTRIES, STATE_BOUNDARIES};
 use actix_web::error::{ErrorBadRequest, ErrorInternalServerError};
 use actix_web::{post, web, Error, HttpResponse, Responder};
+use chrono::{DateTime, TimeDelta, Utc};
 use country_boundaries::LatLon;
 use log::{error, info};
 use reqwest::Client;
@@ -42,7 +43,7 @@ async fn insert_solo_game(
         .get(format!("https://www.geoguessr.com/api/v3/games/{}", game_id))
         .send()
         .await
-        .map_err(|_| ErrorInternalServerError("Fetch Game operation failed!"))?
+        .map_err(|err| ErrorInternalServerError(format!("Fetch Game operation failed! Error: {}", err)))?
         .json::<crate::geo_guessr::SoloGame>()
         .await
         .map_err(|_| ErrorBadRequest(format!("Could not find Game with id: {}!", game_id)))?;
@@ -102,6 +103,9 @@ async fn insert_solo_game(
 
         locations.push(location);
         
+        let round_start_time: DateTime<Utc> = round.start_time.clone().unwrap().parse().unwrap();
+        let guess_time = game.player.guesses[round_number].time;
+        
         let guess = GuessModel {
             id: ActiveValue::Set(guess_id.clone()),
             game_id: ActiveValue::Set(game_id.clone()),
@@ -110,7 +114,8 @@ async fn insert_solo_game(
             lat: ActiveValue::Set(game.player.guesses[round_number].lat),
             lng: ActiveValue::Set(game.player.guesses[round_number].lng),
             score: ActiveValue::Set(game.player.guesses[round_number].round_score_in_points),
-            time: ActiveValue::NotSet,
+            time: ActiveValue::Set(Some(guess_time)),
+            date: ActiveValue::Set((round_start_time + TimeDelta::seconds(guess_time as i64)).to_string()),
             distance: ActiveValue::Set(game.player.guesses[round_number].distance_in_meters),
             country_code: ActiveValue::Set(country_code),
             subdivision_code: ActiveValue::Set(subdivision_code),

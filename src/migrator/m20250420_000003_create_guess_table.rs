@@ -28,6 +28,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Guess::Lng).double().not_null())
                     .col(ColumnDef::new(Guess::Score).integer().not_null())
                     .col(ColumnDef::new(Guess::Time).integer())
+                    .col(ColumnDef::new(Guess::Date).string())
                     .col(ColumnDef::new(Guess::Distance).double().not_null())
                     .col(ColumnDef::new(Guess::CountryCode).string())
                     .col(ColumnDef::new(Guess::SubdivisionCode).string())
@@ -56,6 +57,7 @@ pub enum Guess {
     Lng,
     Score,
     Time,
+    Date,
     Distance,
     CountryCode,
     SubdivisionCode,

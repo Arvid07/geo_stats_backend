@@ -9,7 +9,7 @@ use sea_orm::{ActiveModelTrait, DatabaseConnection};
 use serde::Deserialize;
 use std::collections::HashSet;
 
-const REQUEST_CHUNK_SIZE: usize = 75;
+const REQUEST_CHUNK_SIZE: usize = 50;
 
 #[derive(Deserialize, Debug)]
 struct ImportRecentGamesRequest {
@@ -51,7 +51,7 @@ async fn insert_games(
             .iter()
             .take(REQUEST_CHUNK_SIZE)
             .map(|game_id| get_game_data_if_not_exists(game_id.as_str(), client, cookies.clone(), db))
-            .collect(),
+            .collect()
     );
 
     let results = join_all(futures).await;

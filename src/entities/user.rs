@@ -20,12 +20,20 @@ pub enum Relation {
         from = "Column::Id",
         to = "super::session::Column::UserId"
     )]
-    Session
+    Session,
+    #[sea_orm(has_one = "super::player::Entity")]
+    Player
 }
 
 impl Related<super::session::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Session.def()
+    }
+}
+
+impl Related<super::player::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::Player.def()
     }
 }
 

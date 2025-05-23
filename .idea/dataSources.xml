@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
-    <data-source source="LOCAL" name="GeoStatsDB" uuid="d9e229f3-7449-4257-b443-15c42180c7a2">
+    <data-source source="LOCAL" name="@164.92.251.118" uuid="d9e229f3-7449-4257-b443-15c42180c7a2">
       <driver-ref>postgresql</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.postgresql.Driver</jdbc-driver>
