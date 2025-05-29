@@ -1,11 +1,13 @@
+use std::env;
 use chrono::Datelike;
+use dotenv::dotenv;
 use resend_rs::types::CreateEmailBaseOptions;
 use resend_rs::{Resend, Result};
 
-const EMAIL_KEY: &str = "re_KruTWZFh_M2pRobbxFLS83gm3krvs9rc1";
-
 pub async fn send_verify_email(code: &str, to: &str) -> Result<String> {
-    let resend = Resend::new(EMAIL_KEY);
+    dotenv().ok();
+    let email_key = env::var("EMAIL_KEY").expect("EMAIL_KEY must be set in a .env file!");
+    let resend = Resend::new(&email_key);
 
     let from = "noreply@geostats.io";
     let subject = "Please verify your email!";
