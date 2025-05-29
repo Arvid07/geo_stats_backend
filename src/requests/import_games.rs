@@ -3,7 +3,6 @@ use crate::requests::{geo_login, GamesData};
 use actix_web::error::{ErrorBadRequest, ErrorInternalServerError};
 use actix_web::{post, web, Error, HttpResponse, Responder};
 use futures::future::join_all;
-use log::error;
 use reqwest::Client;
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::Deserialize;
