@@ -4,17 +4,16 @@ mod migrator;
 mod requests;
 mod login;
 
-use std::env;
-use actix_cors::Cors;
-use actix_web::web::Data;
-use actix_web::{App, HttpServer};
-use dotenv::dotenv;
-use log::info;
-use sea_orm::{Database, DbErr};
 use crate::login::login_request::{link_account, log_out, user_login, user_signup, verify_email};
 use crate::requests::get_requests::get_stats;
 use crate::requests::import_games::import_recent_games;
 use crate::requests::insertion_requests::{insert_duels_game, insert_solo_game};
+use actix_cors::Cors;
+use actix_web::web::Data;
+use actix_web::{App, HttpServer};
+use dotenv::dotenv;
+use sea_orm::{Database, DbErr};
+use std::env;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
