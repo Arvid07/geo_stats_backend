@@ -2,7 +2,7 @@ use chrono::Datelike;
 use resend_rs::types::CreateEmailBaseOptions;
 use resend_rs::{Resend, Result};
 
-const EMAIL_KEY: &str = "***REMOVED***";
+const EMAIL_KEY: &str = "re_KruTWZFh_M2pRobbxFLS83gm3krvs9rc1";
 
 pub async fn send_verify_email(code: &str, to: &str) -> Result<String> {
     let resend = Resend::new(EMAIL_KEY);
