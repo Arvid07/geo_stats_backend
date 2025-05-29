@@ -109,7 +109,6 @@ async fn import_recent_games(
     db: web::Data<DatabaseConnection>,
 ) -> Result<impl Responder, Error> {
     if request.entries.is_empty() {
-        error!("Game History is empty!");
         return Err(ErrorBadRequest("Game History is empty!"));
     }
 
