@@ -1,13 +1,16 @@
 use crate::geo_guessr::{Entry, Payload};
-use crate::requests::{geo_login, get_game_data_if_not_exists, insert_games_into_db, GamesData};
-use actix_web::error::ErrorBadRequest;
+use crate::requests::{geo_login, GamesData};
+use actix_web::error::{ErrorBadRequest, ErrorInternalServerError};
 use actix_web::{post, web, Error, HttpResponse, Responder};
 use futures::future::join_all;
 use log::error;
 use reqwest::Client;
-use sea_orm::{ActiveModelTrait, DatabaseConnection};
+use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 use serde::Deserialize;
 use std::collections::HashSet;
+use crate::entities::duels_game;
+use crate::entities::prelude::DuelsGame;
+use crate::requests::insertion_requests::{get_game_data, insert_games_into_db};
 
 const REQUEST_CHUNK_SIZE: usize = 50;
 
@@ -35,7 +38,18 @@ async fn insert_games(
     db: &DatabaseConnection,
     client: &Client,
     cookies: String,
-) -> Result<(), Error> {
+) -> Result<usize, Error> {
+    let existing_games= match DuelsGame::find()
+        .filter(duels_game::Column::Id.is_in(game_ids.clone()))
+        .all(db)
+        .await {
+        Ok(games) => games,
+        Err(err) => return Err(ErrorInternalServerError(err))
+    };
+    
+    let existing_ids: HashSet<String> = existing_games.into_iter().map(|game| game.id).collect();
+    let valid_game_ids: Vec<String> = game_ids.into_iter().filter(|id| !existing_ids.contains(id)).collect();
+    
     let mut duels_games = Vec::new();
     let mut rounds = Vec::new();
     let mut guesses = Vec::new();
@@ -47,10 +61,9 @@ async fn insert_games(
 
     let mut futures = Vec::with_capacity(REQUEST_CHUNK_SIZE);
     futures.append(
-        &mut game_ids
+        &mut valid_game_ids
             .iter()
-            .take(REQUEST_CHUNK_SIZE)
-            .map(|game_id| get_game_data_if_not_exists(game_id.as_str(), client, cookies.clone(), db))
+            .map(|game_id| get_game_data(game_id.as_str(), client, cookies.clone(), db))
             .collect()
     );
 
@@ -87,7 +100,7 @@ async fn insert_games(
 
     insert_games_into_db(games_data, db).await?;
 
-    Ok(())
+    Ok(valid_game_ids.len())
 }
 
 #[post("/import-games")]
@@ -113,10 +126,16 @@ async fn import_recent_games(
                     .filter(|payload| payload.payload.game_mode.as_str() != "LiveChallenge")
                     .map(|payload| payload.payload.game_id)
             );
+            
+            if game_ids.len() >= REQUEST_CHUNK_SIZE {
+                break;
+            }
         }
     }
+    
+    game_ids.truncate(REQUEST_CHUNK_SIZE);
 
-    insert_games(game_ids, db, &client, cookies).await?;
+    let inserted_games = insert_games(game_ids, db, &client, cookies).await?;
 
-    Ok(HttpResponse::Ok())
+    Ok(HttpResponse::Ok().json(inserted_games))
 }

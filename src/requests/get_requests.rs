@@ -1,7 +1,7 @@
 use crate::entities::guess::Model as GuessModel;
 use crate::entities::player::Model as PlayerModel;
 use crate::entities::prelude::{CompTeam, DuelsGame, Guess};
-use crate::entities::{comp_team, duels_game};
+use crate::entities::{comp_team, duels_game, guess};
 use crate::geo_guessr::TeamGameMode;
 use crate::login::get_player_from_session;
 use actix_web::error::{ErrorInternalServerError, ErrorUnauthorized};
@@ -34,75 +34,43 @@ struct Stats {
 #[serde(rename_all = "camelCase")]
 struct StatsGuess {
     time: i64,
-    country_code: String,
+    round_country_code: String,
+    guess_country_code: Option<String>,
     points: usize
 }
 
-struct Score {
-    guess_id: String,
-    date: String,
-    country_code: String,
-    score: usize
-}
-
-async fn get_stats(guesses: Vec<GuessModel>, guess_id_to_game_mode: &HashMap<String, String>) -> Result<Stats, Error> {
-    let mut scores = Vec::with_capacity(guesses.len());
-
-    for guess in guesses {
-        scores.push(
-            Score {
-                guess_id: guess.id, 
-                date: guess.date,
-                country_code: guess.round_country_code,
-                score: guess.score as usize
-            });
-    }
-
+async fn get_processed_stats(guesses: Vec<GuessModel>, guess_id_to_game_mode: &HashMap<String, String>) -> Result<Stats, Error> {
     let mut duels = Vec::new();
     let mut duels_ranked = Vec::new();
     let mut team_duels = Vec::new();
     let mut team_duels_ranked = Vec::new();
     let mut team_fun = Vec::new();
 
-    for score in scores {
-        let date: DateTime<Utc> = score.date.parse().unwrap();
-        let time = date.timestamp_millis();
+    for guess in guesses {
+        let date: DateTime<Utc> = guess.date.parse().unwrap();
         
-        match TeamGameMode::from_str(guess_id_to_game_mode.get(&score.guess_id).unwrap()).unwrap() {
+        let stats_guess = StatsGuess {
+            time: date.timestamp_millis(),
+            round_country_code: guess.round_country_code,
+            guess_country_code: guess.country_code,
+            points: guess.score as usize
+        };
+        
+        match TeamGameMode::from_str(guess_id_to_game_mode.get(&guess.id).unwrap()).unwrap() {
             TeamGameMode::Duels => {
-                duels.push(StatsGuess {
-                    time,
-                    country_code: score.country_code,
-                    points: score.score
-                });
+                duels.push(stats_guess);
             }
             TeamGameMode::DuelsRanked => {
-                duels_ranked.push(StatsGuess {
-                    time,
-                    country_code: score.country_code,
-                    points: score.score
-                });
+                duels_ranked.push(stats_guess);
             }
             TeamGameMode::TeamDuels => {
-                team_duels.push(StatsGuess {
-                    time,
-                    country_code: score.country_code,
-                    points: score.score
-                });      
+                team_duels.push(stats_guess);      
             }
             TeamGameMode::TeamDuelsRanked => {
-                team_duels_ranked.push(StatsGuess {
-                    time,
-                    country_code: score.country_code,
-                    points: score.score
-                });
+                team_duels_ranked.push(stats_guess);
             }
             TeamGameMode::TeamFun => {
-                team_fun.push(StatsGuess {
-                    time,
-                    country_code: score.country_code,
-                    points: score.score
-                });
+                team_fun.push(stats_guess);
             }
         }
     }
@@ -124,8 +92,8 @@ async fn get_stats(guesses: Vec<GuessModel>, guess_id_to_game_mode: &HashMap<Str
     Ok(stats)
 }
 
-#[get("/home-page")]
-pub async fn get_home_page(
+#[get("/stats")]
+pub async fn get_stats(
     db: web::Data<DatabaseConnection>,
     http_request: HttpRequest
 ) -> Result<impl Responder, Error> {
@@ -152,6 +120,7 @@ pub async fn get_home_page(
     let games_guesses = match DuelsGame::find()
         .filter(duels_game::Column::TeamId1.is_in(&team_ids).or(duels_game::Column::TeamId2.is_in(&team_ids)))
         .find_with_related(Guess)
+        .filter(guess::Column::IsTeamsBest.eq(true))
         .all(db)
         .await 
     {
@@ -187,8 +156,8 @@ pub async fn get_home_page(
     }
     
     let (stats, enemy_stats) = match tokio::try_join!(
-        get_stats(player_guesses, &guess_id_to_game_mode),
-        get_stats(enemy_guesses, &guess_id_to_game_mode)
+        get_processed_stats(player_guesses, &guess_id_to_game_mode),
+        get_processed_stats(enemy_guesses, &guess_id_to_game_mode)
     ) {
         Ok((a, b)) => (a, b),
         Err(err) => return Err(ErrorInternalServerError(err))

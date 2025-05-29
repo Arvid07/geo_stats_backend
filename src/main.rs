@@ -4,23 +4,28 @@ mod migrator;
 mod requests;
 mod login;
 
+use std::env;
 use actix_cors::Cors;
 use actix_web::web::Data;
 use actix_web::{App, HttpServer};
+use dotenv::dotenv;
+use log::info;
 use sea_orm::{Database, DbErr};
 use crate::login::login_request::{link_account, log_out, user_login, user_signup, verify_email};
-use crate::requests::get_requests::get_home_page;
+use crate::requests::get_requests::get_stats;
 use crate::requests::import_games::import_recent_games;
 use crate::requests::insertion_requests::{insert_duels_game, insert_solo_game};
 
-const DATABASE_URL: &str = "***REMOVED***";
-
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_LOG", "debug");
     env_logger::init();
     
-    let db = Database::connect(DATABASE_URL)
+    dotenv().ok();
+    
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set in a .env file!");
+    
+    let db = Database::connect(database_url)
         .await
         .unwrap_or_else(|db_err: DbErr| {
             eprintln!("Failed connecting to db: {}", db_err);
@@ -33,7 +38,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(Data::new(db.clone()))
             .service(insert_duels_game)
             .service(insert_solo_game)
-            .service(get_home_page)
+            .service(get_stats)
             .service(user_login)
             .service(user_signup)
             .service(verify_email)
