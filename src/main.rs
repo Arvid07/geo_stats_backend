@@ -14,6 +14,7 @@ use actix_web::{App, HttpServer};
 use dotenv::dotenv;
 use sea_orm::{Database, DbErr};
 use std::env;
+use crate::requests::country_stats_request::get_country_stats;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -30,7 +31,7 @@ async fn main() -> std::io::Result<()> {
             eprintln!("Failed connecting to db: {}", db_err);
             std::process::exit(1);
         });
-    
+
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())
@@ -44,6 +45,7 @@ async fn main() -> std::io::Result<()> {
             .service(link_account)
             .service(log_out)
             .service(import_recent_games)
+            .service(get_country_stats)
     })
     .bind(("127.0.0.1", 8080))?
     .run()

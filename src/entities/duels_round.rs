@@ -10,6 +10,7 @@ pub struct Model {
     pub id: String,
     pub game_id: String,
     pub location_id: String,
+    pub round_country_code: String,
     pub round_number: i32,
     #[sea_orm(column_type = "Double")]
     pub damage_multiplier: f64,

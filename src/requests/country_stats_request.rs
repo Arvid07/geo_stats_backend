@@ -1,32 +1,34 @@
 use crate::entities::player::Model as PlayerModel;
-use crate::entities::prelude::{CompTeam, DuelsGame, Guess};
+use crate::entities::prelude::{CompTeam, DuelsGame};
 use crate::entities::{comp_team, duels_game, duels_round, guess, location};
 use crate::geo_guessr::TeamGameMode;
 use crate::login::get_player_from_session;
 use actix_web::error::{ErrorInternalServerError, ErrorUnauthorized};
 use actix_web::{get, web, Error, HttpRequest, HttpResponse, Responder};
+use chrono::{DateTime, Utc};
 use sea_orm::QueryFilter;
 use sea_orm::{ColumnTrait, LoaderTrait};
 use sea_orm::{DatabaseConnection, EntityTrait};
 use serde::Serialize;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SingleGuess {
-    time: u64,
-    points: u64,
+    time: Option<i32>,
+    points: i32,
     lat: f64,
     lon: f64,
-    country_code: String,
-    subdivision_code: String
+    country_code: Option<String>,
+    subdivision_code: Option<String>
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StatsGuess {
-    round_start_time: i64,
+    game_start_time: i64,
+    round_subdivision_code: Option<String>,
     player_guess: Option<SingleGuess>,
     enemy_guess: Option<SingleGuess>
 }
@@ -34,10 +36,10 @@ struct StatsGuess {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct TeamStatsGuess {
-    round_start_time: i64,
-    round_subdivision_code: String,
-    player_guess: Vec<SingleGuess>,
-    enemy_guess: Vec<SingleGuess>
+    game_start_time: i64,
+    round_subdivision_code: Option<String>,
+    team_guesses: Vec<SingleGuess>,
+    enemy_team_guesses: Vec<SingleGuess>
 }
 
 #[derive(Serialize)]
@@ -58,7 +60,65 @@ struct CountryStatsResponse {
     stats: Option<Stats>
 }
 
-#[get("country/{country_code}")]
+fn get_team_duels_guess(guesses: Vec<guess::Model>, team_ids: &HashSet<String>, date: DateTime<Utc>, location: location::Model) -> TeamStatsGuess {
+    let mut team_guesses = Vec::new();
+    let mut enemy_team_guesses = Vec::new();
+
+    for guess in guesses {
+        let single_guess = SingleGuess {
+            time: guess.time,
+            points: guess.score,
+            lat: guess.lat,
+            lon: guess.lng,
+            country_code: guess.country_code,
+            subdivision_code: guess.subdivision_code,
+        };
+
+        if team_ids.contains(&guess.team_id) {
+            team_guesses.push(single_guess);
+        } else {
+            enemy_team_guesses.push(single_guess);
+        }
+    }
+
+    TeamStatsGuess {
+        game_start_time: date.timestamp_millis(),
+        round_subdivision_code: location.subdivision_code,
+        team_guesses,
+        enemy_team_guesses
+    }
+}
+
+fn get_duels_guess(guesses: Vec<guess::Model>, team_ids: &HashSet<String>, date: DateTime<Utc>, location: location::Model) -> StatsGuess {
+    let mut player_guess = None;
+    let mut enemy_guess = None;
+
+    for guess in guesses {
+        let single_guess = SingleGuess {
+            time: guess.time,
+            points: guess.score,
+            lat: guess.lat,
+            lon: guess.lng,
+            country_code: guess.country_code,
+            subdivision_code: guess.subdivision_code,
+        };
+
+        if team_ids.contains(&guess.team_id) {
+            player_guess = Some(single_guess);
+        } else {
+            enemy_guess = Some(single_guess);
+        }
+    }
+
+    StatsGuess {
+        game_start_time: date.timestamp_millis(),
+        round_subdivision_code: location.subdivision_code,
+        player_guess,
+        enemy_guess
+    }
+}
+
+#[get("/country/{country_code}")]
 pub async fn get_country_stats(
     db: web::Data<DatabaseConnection>,
     path: web::Path<String>,
@@ -72,7 +132,7 @@ pub async fn get_country_stats(
     };
 
     let db = db.get_ref();
-    let country_code = path.into_inner();
+    let country_code = path.into_inner().to_ascii_uppercase();
     let player = get_player_from_session(&session_id, db).await?;
     let mut team_ids: HashSet<String> = [player.id.clone()].into_iter().collect();
 
@@ -89,17 +149,61 @@ pub async fn get_country_stats(
         .filter(duels_game::Column::TeamId1.is_in(&team_ids).or(duels_game::Column::TeamId2.is_in(&team_ids)))
         .all(db)
         .await
-        .unwrap();
+        .map_err(ErrorInternalServerError)?;
     
     let games_rounds = games
-        .load_many(duels_round::Entity, db)
+        .load_many(
+            duels_round::Entity::find().filter(duels_round::Column::RoundCountryCode.eq(&country_code)),
+            db
+        )
         .await
-        .unwrap();
-    
-    let rounds: Vec<duels_round::Model> = games_rounds.clone().into_iter().flatten().collect();
-    let rounds_guesses = rounds.load_many(guess::Entity, db).await.unwrap();
-    let locations = rounds.load_one(location::Entity, db).await.unwrap();
-    
+        .map_err(ErrorInternalServerError)?;
 
-    Ok(HttpResponse::Ok().body(""))
+    let game_values: HashMap<String, (String, String)> = games.into_iter().map(|game| (game.id, (game.team_game_mode, game.start_time))).collect();
+
+    let mut duels = Vec::new();
+    let mut duels_ranked = Vec::new();
+    let mut team_duels = Vec::new();
+    let mut team_duels_ranked = Vec::new();
+    let mut team_fun = Vec::new();
+    
+    let rounds: Vec<duels_round::Model> = games_rounds.into_iter().flatten().collect();
+    let rounds_guesses = rounds.load_many(guess::Entity, db).await.map_err(ErrorInternalServerError)?;
+    let locations = rounds.load_one(location::Entity, db).await.map_err(ErrorInternalServerError)?;
+    
+    for ((round, guesses), location) in rounds.into_iter().zip(rounds_guesses).zip(locations) {
+        if let Some(location) = location {
+            let (team_game_mode_str, game_start_time) = game_values.get(&round.game_id).unwrap();
+            let date: DateTime<Utc> = game_start_time.parse().unwrap();
+            
+            match TeamGameMode::from_str(team_game_mode_str).unwrap() {
+                TeamGameMode::Duels => duels.push(get_duels_guess(guesses, &team_ids, date, location)),
+                TeamGameMode::DuelsRanked => duels_ranked.push(get_duels_guess(guesses, &team_ids, date, location)),
+                TeamGameMode::TeamDuels => team_duels.push(get_team_duels_guess(guesses, &team_ids, date, location)),
+                TeamGameMode::TeamDuelsRanked => team_duels_ranked.push(get_team_duels_guess(guesses, &team_ids, date, location)),
+                TeamGameMode::TeamFun => team_fun.push(get_team_duels_guess(guesses, &team_ids, date, location))
+            }
+        }
+    }
+    
+    duels.sort_unstable_by(|a, b| b.game_start_time.cmp(&a.game_start_time));
+    duels_ranked.sort_unstable_by(|a, b| b.game_start_time.cmp(&a.game_start_time));
+    team_duels.sort_unstable_by(|a, b| b.game_start_time.cmp(&a.game_start_time));
+    team_duels_ranked.sort_unstable_by(|a, b| b.game_start_time.cmp(&a.game_start_time));
+    team_fun.sort_unstable_by(|a, b| b.game_start_time.cmp(&a.game_start_time));
+    
+    let stats = Stats {
+        duels,
+        duels_ranked,
+        team_duels,
+        team_duels_ranked,
+        team_fun
+    };
+    
+    let response = CountryStatsResponse {
+        player,
+        stats: Some(stats)
+    };
+    
+    Ok(HttpResponse::Ok().json(response))
 }

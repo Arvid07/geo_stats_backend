@@ -23,6 +23,7 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(DuelsRound::GameId).string().not_null())
                     .col(ColumnDef::new(DuelsRound::LocationId).string().not_null())
+                    .col(ColumnDef::new(DuelsRound::RoundCountryCode).string().not_null())
                     .col(ColumnDef::new(DuelsRound::RoundNumber).integer().not_null())
                     .col(ColumnDef::new(DuelsRound::DamageMultiplier).double().not_null())
                     .to_owned(),
@@ -43,6 +44,7 @@ pub enum DuelsRound {
     Id,
     GameId,
     LocationId,
+    RoundCountryCode,
     RoundNumber,
     DamageMultiplier
 }

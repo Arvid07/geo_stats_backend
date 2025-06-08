@@ -4,6 +4,7 @@ use crate::entities::location::ActiveModel as LocationModel;
 use crate::entities::map::ActiveModel as MapModel;
 use crate::entities::comp_team::ActiveModel as CompTeamModel;
 use crate::entities::duels_game::ActiveModel as DuelsGameModel;
+use crate::entities::duels_round::ActiveModel as DuelsRoundModel;
 use crate::entities::prelude::{CompTeam, DuelsGame, DuelsRound, FunTeam, Guess, Location, Map, Player, SoloGame, SoloRound};
 use crate::entities::solo_game::ActiveModel as SoloGameModel;
 use crate::entities::solo_round::ActiveModel as SoloRoundModel;
@@ -681,10 +682,11 @@ pub async fn get_game_data(
             }
         }
 
-        let round = crate::entities::duels_round::ActiveModel {
+        let round = DuelsRoundModel {
             id: ActiveValue::Set(round_id),
             game_id: ActiveValue::Set(game.game_id.clone()),
             location_id: ActiveValue::Set(panorama.pano_id.clone()),
+            round_country_code: ActiveValue::Set(round.panorama.country_code.clone().to_ascii_uppercase()),
             round_number: ActiveValue::Set(round_number as i32),
             damage_multiplier: ActiveValue::Set(round.damage_multiplier)
         };

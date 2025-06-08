@@ -17,7 +17,7 @@ pub mod insertion_requests;
 pub mod general_stats_requests;
 pub mod geo_login;
 pub mod import_games;
-mod country_stats_request;
+pub mod country_stats_request;
 
 const CASH_EXPIRE_TIME: TimeDelta = TimeDelta::seconds(90);
 
