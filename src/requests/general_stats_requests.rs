@@ -93,7 +93,7 @@ async fn get_processed_stats(guesses: Vec<GuessModel>, guess_id_to_game_mode: &H
 }
 
 #[get("/stats")]
-pub async fn get_stats(
+pub async fn get_general_stats(
     db: web::Data<DatabaseConnection>,
     http_request: HttpRequest
 ) -> Result<impl Responder, Error> {

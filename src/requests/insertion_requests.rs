@@ -8,7 +8,7 @@ use crate::entities::prelude::{CompTeam, DuelsGame, DuelsRound, FunTeam, Guess, 
 use crate::entities::solo_game::ActiveModel as SoloGameModel;
 use crate::entities::solo_round::ActiveModel as SoloRoundModel;
 use crate::geo_guessr::{GameModeRatings, GeoMode, MovementOption, PlayerRankedSystemProgress, RankedTeam, RankedTeamDuelsProgress, TeamGameMode, User};
-use crate::requests::{geo_login, GameData, GamesData, CASH_EXPIRE_TIME, COUNTRY_BOUNDARIES, PRIORITY_COUNTRIES, RECENTLY_CASHED_ITEMS, STATE_BOUNDARIES};
+use crate::requests::{geo_login, GameData, GamesData, CASH_EXPIRE_TIME, COUNTRY_BOUNDARIES, PRIORITY_COUNTRIES, CASHED_ITEMS, STATE_BOUNDARIES};
 use actix_web::error::{ErrorBadRequest, ErrorInternalServerError, ErrorNotFound};
 use actix_web::{post, web, Error, HttpResponse, Responder};
 use chrono::{DateTime, TimeDelta, Utc};
@@ -33,7 +33,7 @@ pub async fn create_new_comp_team(
     client: &Client
 ) -> Result<Option<CompTeamModel>, Error> {
     let team_id = get_team_id(vec![player_id1, player_id2]);
-    let guard = RECENTLY_CASHED_ITEMS.lock().await;
+    let guard = CASHED_ITEMS.lock().await;
     
     if let Some(expire_date) = guard.get(&team_id) {
         if &Utc::now() < expire_date {
@@ -65,7 +65,7 @@ pub async fn create_new_comp_team(
         rating: ActiveValue::Set(team_progress.rating_after)
     };
 
-    let mut guard = RECENTLY_CASHED_ITEMS.lock().await;
+    let mut guard = CASHED_ITEMS.lock().await;
     guard.insert(team_id, Utc::now() + CASH_EXPIRE_TIME);
 
     Ok(Some(team))
@@ -337,7 +337,7 @@ pub async fn create_new_player_model(
     player_id: &str,
     client: &Client,
 ) -> Result<Option<PlayerModel>, Error> {
-    let guard = RECENTLY_CASHED_ITEMS.lock().await;
+    let guard = CASHED_ITEMS.lock().await;
 
     if let Some(expire_date) = guard.get(player_id) {
         if &Utc::now() < expire_date {
@@ -416,7 +416,7 @@ pub async fn create_new_player_model(
         is_creator: ActiveValue::Set(player_response.is_creator)
     };
 
-    let mut guard = RECENTLY_CASHED_ITEMS.lock().await;
+    let mut guard = CASHED_ITEMS.lock().await;
     guard.insert(String::from(player_id), Utc::now() + CASH_EXPIRE_TIME);
 
     Ok(Some(player))

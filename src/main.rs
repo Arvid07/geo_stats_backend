@@ -5,7 +5,7 @@ mod requests;
 mod login;
 
 use crate::login::login_request::{link_account, log_out, user_login, user_signup, verify_email};
-use crate::requests::get_requests::get_stats;
+use crate::requests::general_stats_requests::get_general_stats;
 use crate::requests::import_games::import_recent_games;
 use crate::requests::insertion_requests::{insert_duels_game, insert_solo_game};
 use actix_cors::Cors;
@@ -30,14 +30,14 @@ async fn main() -> std::io::Result<()> {
             eprintln!("Failed connecting to db: {}", db_err);
             std::process::exit(1);
         });
-
+    
     HttpServer::new(move || {
         App::new()
             .wrap(Cors::permissive())
             .app_data(Data::new(db.clone()))
             .service(insert_duels_game)
             .service(insert_solo_game)
-            .service(get_stats)
+            .service(get_general_stats)
             .service(user_login)
             .service(user_signup)
             .service(verify_email)

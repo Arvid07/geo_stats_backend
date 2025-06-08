@@ -1,33 +1,23 @@
-use std::collections::{HashMap, HashSet};
-use std::fs::File;
+use crate::entities::comp_team::ActiveModel as CompTeamModel;
 use crate::entities::duels_game::ActiveModel as DuelsGameModel;
 use crate::entities::duels_round::ActiveModel as DuelsRoundModel;
+use crate::entities::fun_team::ActiveModel as FunTeamModel;
 use crate::entities::guess::ActiveModel as GuessModel;
 use crate::entities::location::ActiveModel as LocationModel;
-use crate::entities::player::ActiveModel as PlayerModel;
-use crate::entities::comp_team::ActiveModel as CompTeamModel;
-use crate::entities::fun_team::ActiveModel as FunTeamModel;
 use crate::entities::map::ActiveModel as MapModel;
-use actix_web::Error;
-use actix_web::error::{ErrorBadRequest, ErrorInternalServerError, ErrorNotFound};
+use crate::entities::player::ActiveModel as PlayerModel;
 use chrono::{DateTime, TimeDelta, Utc};
-use country_boundaries::{CountryBoundaries, LatLon};
+use country_boundaries::CountryBoundaries;
 use lazy_static::lazy_static;
-use log::{error, info};
-use reqwest::Client;
-use reqwest::header::COOKIE;
-use sea_orm::{sea_query, ActiveValue, DatabaseConnection, DbErr, EntityTrait, TransactionTrait};
+use std::collections::{HashMap, HashSet};
+use std::fs::File;
 use tokio::sync::Mutex;
-use uuid::Uuid;
-use crate::entities::{comp_team, map, player};
-use crate::entities::prelude::{CompTeam, DuelsGame, DuelsRound, FunTeam, Guess, Location, Map, Player};
-use crate::geo_guessr::{GameModeRatings, GeoMode, MovementOption, PlayerRankedSystemProgress, RankedTeam, RankedTeamDuelsProgress, TeamGameMode, User};
-use crate::geo_guessr::GeoMode::{Moving, NoMove, NoMovingZooming, NoPanning, NoPanningMoving, NoPanningZooming, NoZooming, NMPZ};
 
 pub mod insertion_requests;
-pub mod get_requests;
+pub mod general_stats_requests;
 pub mod geo_login;
 pub mod import_games;
+mod country_stats_request;
 
 const CASH_EXPIRE_TIME: TimeDelta = TimeDelta::seconds(90);
 
@@ -43,7 +33,7 @@ lazy_static! {
     ).expect("failed to load country boundaries");
     
     static ref PRIORITY_COUNTRIES: HashSet<String> = [
-        String::from("CU"), 
+        String::from("CW"),
         String::from("DO"),
         String::from("PR"), 
         String::from("VI"), 
@@ -55,7 +45,7 @@ lazy_static! {
         String::from("SJ")
     ].into_iter().collect();
     
-    static ref RECENTLY_CASHED_ITEMS: Mutex<HashMap<String, DateTime<Utc>>> = Mutex::new(HashMap::new());
+    static ref CASHED_ITEMS: Mutex<HashMap<String, DateTime<Utc>>> = Mutex::new(HashMap::new());
 }
 
 pub struct GamesData {
