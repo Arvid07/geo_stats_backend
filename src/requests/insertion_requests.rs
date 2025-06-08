@@ -769,7 +769,7 @@ async fn insert_solo_game(
     let geo_mode = get_geo_mode(&MovementOption {
         forbid_moving: game.forbid_moving,
         forbid_zooming: game.forbid_zooming,
-        forbid_rotating: game.forbid_rotating,
+        forbid_rotating: game.forbid_rotating
     });
 
     let mut rounds = Vec::with_capacity(game.round as usize);
